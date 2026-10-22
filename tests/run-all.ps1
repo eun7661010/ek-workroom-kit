@@ -19,6 +19,14 @@ function Run-PS([string]$Script,[array]$Arguments) {
     $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script @Arguments 2>&1 | Out-String
     return @{ Code=$LASTEXITCODE; Output=$output }
 }
+function Run-Python([string]$Script,[array]$Arguments) {
+    $savedPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = & python $Script @Arguments 2>&1 | Out-String
+        return @{ Code=$LASTEXITCODE; Output=$output }
+    } finally { $ErrorActionPreference = $savedPreference }
+}
 try {
     Write-Host '보호 대상 실제 홈 해시 기록 중 (읽기 전용)'
     & python "$PSScriptRoot/home_snapshot.py" $realHome "$run/before.json"
@@ -32,10 +40,6 @@ try {
     $env:PYTHONDONTWRITEBYTECODE = '1'
     foreach ($dir in @($env:USERPROFILE,$env:CLAUDE_CONFIG_DIR,$env:CODEX_HOME,$env:TEMP)) { $null = New-Item -ItemType Directory -Path $dir -Force }
     $scripts = Join-Path $root 'plugins/ek-workroom/scripts'
-
-    $legacy = Run-PS "$root/kit/tests/Test-Setup.ps1" @()
-    Check ($legacy.Code -eq 0) '기존 키트 테스트 종료 0'
-    if ($legacy.Code -ne 0) { Write-Host $legacy.Output }
 
     foreach ($file in @(Get-ChildItem -LiteralPath $root -Filter '*.ps1' -File -Recurse | Where-Object { $_.FullName -notlike "$root\.tmp\*" })) {
         $tokens = $null; $errors = $null
@@ -57,16 +61,16 @@ try {
             $profilePath = Join-Path $homePath 'profile.json'
             $studentPath = Join-Path $homePath 'StudentRecords'
             $null = New-Item -ItemType Directory -Path $studentPath -Force
-            Write-Json $profilePath @{ studentDataPaths=@($studentPath); accountLabel='업무용' }
+            Write-Json $profilePath @{ studentDataPaths=@($studentPath) }
             if ($case -eq 'existing') {
                 Write-Json $settings @{ custom=@{keep=$true}; permissions=@{allow=@('Read(README.md)');deny=@('Read(//private/**)');ask=@('Bash(git push *)')}; statusLine=@{padding=2;type='command';command='old-command'} }
             }
             if ($case -eq 'invalid') { [IO.File]::WriteAllText($settings,'{"broken":') }
             $before = if (Test-Path -LiteralPath $settings) { (Get-FileHash $settings).Hash } else { 'ABSENT' }
-            $preview = Run-PS "$scripts/$name.ps1" @('-TargetHome',$homePath,'-ProfilePath',$profilePath)
+            $callArgs = @('-TargetHome',$homePath); if ($name -eq 'apply-safety') { $callArgs += @('-ProfilePath',$profilePath) }; $preview = Run-PS "$scripts/$name.ps1" $callArgs
             $afterPreview = if (Test-Path -LiteralPath $settings) { (Get-FileHash $settings).Hash } else { 'ABSENT' }
             Check ($before -eq $afterPreview) "$name $case 미리보기 원본 보존"
-            $result = Run-PS "$scripts/$name.ps1" @('-TargetHome',$homePath,'-ProfilePath',$profilePath,'-Apply')
+            $result = Run-PS "$scripts/$name.ps1" ($callArgs + @('-Apply'))
             if ($case -eq 'invalid') {
                 Check ($result.Code -ne 0 -and (Get-FileHash $settings).Hash -eq $before) "$name 잘못된 JSON 거부 및 원본 보존"
                 Check (@(Get-ChildItem (Split-Path $settings) -Filter '*.ek-backup-*').Count -eq 0) "$name 잘못된 JSON 백업/쓰기 없음"
@@ -90,14 +94,14 @@ try {
             }
             $firstHash = (Get-FileHash $settings).Hash
             $backupCount = @(Get-ChildItem (Split-Path $settings) -Filter 'settings.json.ek-backup-*').Count
-            $again = Run-PS "$scripts/$name.ps1" @('-TargetHome',$homePath,'-ProfilePath',$profilePath,'-Apply')
+            $again = Run-PS "$scripts/$name.ps1" ($callArgs + @('-Apply'))
             Check ($again.Code -eq 0 -and (Get-FileHash $settings).Hash -eq $firstHash -and @(Get-ChildItem (Split-Path $settings) -Filter 'settings.json.ek-backup-*').Count -eq $backupCount) "$name $case 2회 멱등·추가 백업 없음"
         }
     }
 
     $emptyHome = Join-Path $run 'empty-profile'
     $emptyProfile = Join-Path $emptyHome 'profile.json'
-    Write-Json $emptyProfile @{studentDataPaths=@();accountLabel='업무용'}
+    Write-Json $emptyProfile @{studentDataPaths=@()}
     $emptyResult = Run-PS "$scripts/apply-safety.ps1" @('-TargetHome',$emptyHome,'-ProfilePath',$emptyProfile)
     Check ($emptyResult.Code -ne 0 -and -not (Test-Path "$emptyHome/.claude/settings.json")) '학생정보 보호 경로 누락 거부'
 
@@ -114,9 +118,9 @@ try {
     $end = Run-PS "$scripts/ek-end-check.ps1" @('-TargetHome',$env:USERPROFILE)
     Check ($end.Code -eq 0 -and $end.Output -match 'OpenSSH' -and $end.Output -match 'Tailscale' -and $end.Output -match '남은 원격 접속') '종료 점검 읽기 전용 결과'
 
-    $mac = & python "$PSScriptRoot/test_mac_engine.py" $run 2>&1 | Out-String
-    Check ($LASTEXITCODE -eq 0) 'Mac 공통 엔진 가짜 홈 병합·백업·멱등·진단'
-    Write-Host $mac
+    $mac = Run-Python "$PSScriptRoot/test_mac_engine.py" @($run)
+    Check ($mac.Code -eq 0) 'Mac 공통 엔진 가짜 홈 병합·백업·멱등·진단'
+    Write-Host $mac.Output
 
     $sample = Join-Path $run 'sample'
     $null = New-Item -ItemType Directory -Path $sample -Force
@@ -133,6 +137,10 @@ try {
     Check ($extra.Code -eq 0) 'v0.1.1 인코딩·마스킹·경로·설치격리·릴리스 회귀'
     Write-Host $extra.Output
 
+    $newTests = Run-Python "$PSScriptRoot/test_v020.py" @($run)
+    Check ($newTests.Code -eq 0) 'v0.2.0 실행 도구·Edge·경계·고정 CLI 시험'
+    Write-Host $newTests.Output
+
     $leaks = @()
     foreach ($file in @(Get-ChildItem "$root/plugins" -File -Recurse)) {
         $raw = [IO.File]::ReadAllText($file.FullName)
@@ -142,14 +150,14 @@ try {
     Check ($leaks.Count -eq 0) '플러그인 개인 경로·비밀·금지 문구 누출 0건'
     if ($leaks.Count) { Write-Host ($leaks -join ', ') }
     $skills = @(Get-ChildItem "$root/plugins/ek-workroom/skills" -Filter SKILL.md -File -Recurse)
-    Check ($skills.Count -eq 18) '런북 6개 + 고객 스킬 12개'
+    Check ($skills.Count -eq 16) '런북 6개 + 고객 스킬 10개'
 
     foreach ($path in @($root, "$root/plugins/ek-workroom")) {
         $validation = & claude plugin validate $path 2>&1 | Out-String
         Check ($LASTEXITCODE -eq 0) ('claude plugin validate: ' + $(if ($path -eq $root) { 'marketplace' } else { 'plugin' }))
         Write-Host $validation
     }
-    Write-Host 'SKIP 플러그인 설치: 이번 v0.1.1 작업의 설치 금지 지시에 따라 validate와 정적 목록만 확인했습니다.'
+    Write-Host 'SKIP 플러그인 설치: 이번 v0.2.0 작업의 설치 금지 지시에 따라 validate와 정적 목록만 확인했습니다.'
 } catch {
     $failures.Add('테스트 실행 예외')
     Write-Host ('FAIL 테스트 예외: ' + $_.Exception.Message)

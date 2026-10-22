@@ -1,21 +1,12 @@
 {
   "schemaVersion": "0.1",
   "os": "windows",
-  "plans": {
-    "claude": "본인 유료 구독: 고객 화면에서 확인",
-    "codex": "본인 유료 구독: 사용 가능 여부 고객 화면에서 확인"
-  },
   "securitySoftware": [
     "Windows 보안"
   ],
   "studentDataPaths": [
     "D:/학생정보"
   ],
-  "selectedSkills": [
-    "parent-message",
-    "korean-review"
-  ],
-  "accountLabel": "업무용",
   "workflow": {
     "code": "A",
     "template": "A.md"

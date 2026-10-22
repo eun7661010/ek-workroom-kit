@@ -1,32 +1,36 @@
 ---
 name: ek-mode
-description: 상태줄과 읽기 편한 작업 화면을 적용할 때 사용한다.
+description: 상태줄·작업실 폴더·읽기 편한 두 창을 설정할 때 사용한다.
 disable-model-invocation: true
 ---
 
-# 상태줄과 읽기 편한 작업 화면을 적용할 때 사용한다.
+# 상태줄·작업실 폴더·읽기 편한 두 창을 설정할 때 사용한다.
 
-## 공통 약속
-고객 본인 Claude Code에서 진행합니다. 판매자는 Zoom으로 감독하며 판매자 AI에는 고객이 읽고 붙여 넣은 마스킹 진단만 전달합니다. 비밀번호·인증 코드·API 키는 묻거나 저장하지 않습니다. 로그인은 고객이 직접 하고 화면 공유를 잠시 끕니다.
-모든 변경은 먼저 DryRun으로 대상과 결과를 설명하고 원장 승인 뒤 적용합니다. 학생정보 폴더는 열거나 탐색하지 않습니다. 고객이 먼저 개인정보를 지운 샘플만 씁니다. 런북 밖 요청은 “세션 뒤 판매자와 상의해 주세요”로 돌립니다. 같은 오류가 3회면 멈춥니다. 결과를 확인하기 전 완료라고 말하지 않습니다.
+고객 본인 Claude Code에서 진행합니다. 판매자는 Zoom 작업 창으로 감독합니다. 학생정보 폴더를 열지 않고 비밀번호·인증 코드·인증 파일을 받지 않습니다. 로그인은 본인이 화면 공유를 끄고 직접 합니다. 설정 변경은 미리보기→항목 승인→스크립트 적용→확인 순서입니다. 기존 파일 덮어쓰기 금지. 결과 파일을 열어 확인하기 전 완료라고 말하지 않는다. 같은 오류가 3회면 원인을 재검토합니다.
+`${CLAUDE_PLUGIN_ROOT}`는 설치된 플러그인 절대 경로로 치환합니다. 고객 홈과 프로필도 고객이 지정한 절대 경로를 사용합니다.
 
-## 단계
-`<플러그인>`은 `${CLAUDE_PLUGIN_ROOT}`가 가리키는 설치된 플러그인의 절대 경로입니다. 이 변수는 Claude가 Markdown을 읽을 때 실제 경로로 치환합니다. 치환된 절대 경로를 따옴표로 감싸며 PowerShell에서 변수 문자를 직접 평가하지 않습니다. 현재 작업 폴더 기준으로 scripts/templates를 찾지 않습니다. `<고객 홈>`과 `<프로필 JSON>`은 원장님이 지정한 로컬 절대 경로로 바꿉니다.
+## 상태줄
+프로필 인자 없이 미리보기합니다.
+Windows:
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/apply-statusline.ps1" -TargetHome "<고객 홈>" -DryRun
+```
+Mac:
+```sh
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/apply-statusline.sh" --home "<고객 홈>" --dry-run
+```
+기존 설정 병합·백업 계획을 설명하고 승인 뒤 `-Apply` 또는 `--apply`로 실행합니다. 모델·작업 폴더·대화 사용량·제공되는 경우 5시간 사용량을 확인합니다. 실제 계정은 본인이 `/status`로 확인합니다.
 
-1. `accountLabel`은 “업무용/개인용” 수동 별칭이며 실제 로그인 검증 값이 아님을 설명합니다. 실제 계정은 고객이 `/status`에서 확인합니다.
-2. Windows: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<플러그인>/scripts/apply-statusline.ps1" -TargetHome "<고객 홈>" -ProfilePath "<프로필 JSON>" -DryRun`. Mac: `bash "<플러그인>/scripts/apply-statusline.sh" --home "<고객 홈>" --profile "<프로필 JSON>" --dry-run`.
-3. 기존 상태줄 교체 여부, 모델·폴더·별칭 표시, 백업 계획을 보여 줍니다. 승인 뒤 `-Apply` 또는 `--apply`로 실행합니다.
-4. 상태줄 표시를 고객 화면에서 확인합니다. Warp가 이미 있으면 메뉴에서 패널을 나눠 왼쪽 Claude/오른쪽 Codex로 둡니다. 없으면 터미널 창 두 개를 나란히 둡니다.
-5. 이미 설치된 한글 글꼴을 선택하고 “한글 확인”을 입력합니다. `/ek-workroom:korean-review` 호출로 스킬팩을 확인합니다.
+## 작업실 만들기
+Windows:
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/apply-workspace.ps1" -TargetHome "<고객 홈>" -ProfilePath "<프로필 JSON>" -DryRun
+```
+Mac:
+```sh
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/apply-workspace.sh" --home "<고객 홈>" --profile "<프로필 JSON>" --dry-run
+```
+선택 `workspacePath` 또는 기본 `<홈>/AI작업실`의 생성 목록과 학생 폴더와 겹치지 않음을 확인합니다. 승인 뒤 `-Apply`/`--apply`로 실행합니다. 입력/결과/원본/검토, `CLAUDE.md` 첫 줄 `@AGENTS.md`, AGENTS.md, 검토 양식, 내-업무-실행법.md를 엽니다. 기존 파일 유지 결과도 확인합니다. 설정·폴더 생성 명령을 즉석에서 만들지 않습니다.
 
-## 확인 질문
-“이 별칭과 상태줄로 바꿀까요? 두 창과 한글을 읽기 편하신가요?”
-
-## 완료 확인
-모델·폴더·수동 별칭·한글·스킬 호출이 확인되면 완료입니다.
-
-## 막힐 때 대처
-표시가 안 되면 저장 후 재시작합니다. 분할 메뉴가 다르면 두 창을 사용합니다. Warp·새 글꼴 설치는 별도 상담합니다.
-
-## 하지 말 것
-인증 파일 읽기, 계정 자동 추측, 글꼴·Node 설치, 터미널 설정 전체 초기화를 하지 않습니다.
+## 창 배치·완료
+Windows Terminal이 있으면 `Alt+Shift+=`로 나누고 왼쪽 Claude·오른쪽 Codex로 둡니다. 없거나 단축키가 안 되면 터미널 창 두 개를 나란히 둡니다. Mac도 창 두 개를 사용합니다. 설치된 글꼴로 한글을 확인하고 `/ek-workroom:korean-review`로 비식별 한 문장 검수를 실행합니다. 상태줄·작업실 파일·한글·스킬 호출을 확인해야 완료입니다. 새 터미널·글꼴 설치는 하지 않습니다.

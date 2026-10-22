@@ -1,4 +1,4 @@
-"""v0.1.1 회귀. 외부 다운로드·설치는 모두 가짜로 대체한다."""
+"""v0.2.0 회귀. 외부 다운로드·설치는 모두 가짜로 대체한다."""
 import hashlib
 import importlib.util
 import json
@@ -38,7 +38,7 @@ statusline = root / 'plugins/ek-workroom/scripts/statusline.ps1'
 cmd = "[Console]::InputEncoding=[Text.Encoding]::GetEncoding(949);[Console]::OutputEncoding=[Text.Encoding]::GetEncoding(949); & '" + str(statusline).replace("'", "''") + "'"
 p = run(ps + ['-Command', cmd], input=payload)
 output = p.stdout.decode('utf-8', errors='strict')
-check(p.returncode == 0 and 'AI작업실' in output and '테스트 모델' in output and '수동 고정값' in output, 'CP949 호스트 상태줄 UTF-8 stdin/stdout')
+check(p.returncode == 0 and output.strip() == '테스트 모델 · AI작업실', 'CP949 호스트 상태줄 UTF-8 stdin/stdout')
 
 engine_path = root / 'plugins/ek-workroom/scripts/ek_engine.py'
 spec = importlib.util.spec_from_file_location('engine_v011', engine_path)
@@ -68,7 +68,7 @@ private = '은광 원장 010.1234.5678 02-123-4567 0507-1234-5678 10.20.30.40 20
 masked = engine.mask_text(private, home, user='은광', computer='원장')
 check(all(x not in masked for x in private.split()), 'Mac 엔진 두 글자·전화·IPv6 마스킹')
 
-archive = release / 'ek-workroom-0.1.1.zip'
+archive = release / 'ek-workroom-0.2.0.zip'
 with zipfile.ZipFile(archive) as z:
     check(z.testzip() is None, '릴리스 ZIP 무결성')
     for name in z.namelist():
@@ -80,6 +80,8 @@ listing = subprocess.check_output(['git', 'ls-files', '-co', '--exclude-standard
 for name in set(listing.split('\0')) - {''}:
     path = root / name
     if path.suffix not in ('.md', '.json', '.ps1', '.sh', '.py', '.txt') and path.name not in ('.gitignore', '.gitattributes'):
+        continue
+    if not path.is_file():
         continue
     data = path.read_bytes()
     text = data.decode('utf-8-sig', errors='strict')
@@ -127,6 +129,6 @@ mac_home.mkdir()
 digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 args = [bash_exe, str(root / 'bootstrap/bootstrap.sh'), '--source', str(archive), '--expected-sha256', digest, '--home', str(mac_home), '--prepare-only']
 result = run(args)
-check(result.returncode == 0 and (mac_home / 'ek-workroom/kit-0.1.1/.claude-plugin/marketplace.json').exists(), 'Mac 진입점 고정 경로 준비만 실행')
+check(result.returncode == 0 and (mac_home / 'ek-workroom/kit-0.2.0/.claude-plugin/marketplace.json').exists(), 'Mac 진입점 고정 경로 준비만 실행')
 check(run(args).returncode != 0, 'Mac 진입점 같은 위치 재실행 거부')
-print('v0.1.1 Python 회귀 완료')
+print('v0.2.0 Python 회귀 완료')

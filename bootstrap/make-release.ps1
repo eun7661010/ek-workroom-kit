@@ -3,7 +3,7 @@
 param(
     [Alias('OutputDir')][string]$OutputDirectory,
     [string]$SourceDirectory,
-    [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Version='0.1.1',
+    [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Version='0.2.0',
     [ValidatePattern('^https://[A-Za-z0-9][^\s''"`]*$')][string]$ReleaseBaseUrl='https://github.com/eun7661010/ek-workroom-kit/releases/download'
 )
 $ErrorActionPreference='Stop'
@@ -12,7 +12,7 @@ try {
     $sourceRoot=[IO.Path]::GetFullPath($SourceDirectory).TrimEnd('\','/')
     if(-not $OutputDirectory) { $OutputDirectory=Join-Path $sourceRoot ('.tmp/release-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[guid]::NewGuid().ToString('N').Substring(0,8)) }
     $outRoot=[IO.Path]::GetFullPath($OutputDirectory)
-    foreach($included in @('.claude-plugin','plugins','bootstrap','kit','console','docs','tests')) {
+    foreach($included in @('.claude-plugin','plugins','bootstrap','console','docs','tests')) {
         $includedRoot=(Join-Path $sourceRoot $included).TrimEnd('\','/')
         if($outRoot -eq $includedRoot -or $outRoot.StartsWith($includedRoot+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw '출력 폴더는 키트 원본 폴더 밖이나 .tmp 안으로 지정하세요.' }
     }
@@ -22,7 +22,7 @@ try {
     if((Get-Item -LiteralPath $sourceRoot -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw '연결 폴더는 릴리스 원본으로 사용할 수 없습니다.' }
     $stage=Join-Path $outRoot 'staging'
     $null=New-Item -ItemType Directory -Path $stage
-    $items=@('.claude-plugin','plugins','bootstrap','kit','console','docs','tests','README.md','.gitattributes')
+    $items=@('.claude-plugin','plugins','bootstrap','console','docs','tests','README.md','.gitattributes')
     $manifestPaths=New-Object 'System.Collections.Generic.List[string]'
     $fileMap=@{}
     function Copy-Safe([string]$src,[string]$dst) {

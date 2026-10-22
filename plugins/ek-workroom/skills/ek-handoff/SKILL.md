@@ -14,8 +14,8 @@ disable-model-invocation: true
 `<플러그인>`은 `${CLAUDE_PLUGIN_ROOT}`가 가리키는 설치된 플러그인의 절대 경로입니다. 이 변수는 Claude가 Markdown을 읽을 때 실제 경로로 치환합니다. 치환된 절대 경로를 따옴표로 감싸며 PowerShell에서 변수 문자를 직접 평가하지 않습니다. 현재 작업 폴더 기준으로 scripts/templates를 찾지 않습니다. `<고객 홈>`과 `<프로필 JSON>`은 원장님이 지정한 로컬 절대 경로로 바꿉니다.
 
 1. 판매자는 설명을 멈추고 고객이 ‘내 업무 실행법’만 보며 새 더미 입력→실행→결과 열기→검수까지 직접 합니다. 목표 15분이며 실패 지점·실측 시간을 기록합니다.
-2. 원장님이 받은 전체 키트의 `docs/customer-guidebook.md` 위치를 직접 지정받고 고객 작업실의 ‘내 PC 설명서’와 함께 확인합니다. 가이드북은 플러그인 캐시 밖 `<홈>/ek-workroom/kit-0.1.1/docs/customer-guidebook.md`에 있습니다. bootstrap이 출력한 고정 절대 경로를 사용합니다. 버전·설정/백업 위치·업무 명령·미완료 항목·지원 종료일을 기록하고 고객 로컬에 둡니다.
-3. `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<플러그인>/scripts/ek-end-check.ps1" -TargetHome "<고객 홈>" -DryRun` 또는 `bash "<플러그인>/scripts/ek-end-check.sh" --home "<고객 홈>" --dry-run`으로 읽기 전용 종료 점검을 합니다. sshd·Tailscale·원격 호스트·이번 세션 예약 작업 결과를 확인합니다.
+2. 원장님이 받은 전체 키트의 `docs/customer-guidebook.md` 위치를 직접 지정받고 고객 작업실의 ‘내 PC 설명서’와 함께 확인합니다. 가이드북은 bootstrap이 출력한 고정 키트 절대 경로 아래 `docs/customer-guidebook.md`에 있습니다. 버전 폴더를 추측하거나 하드코딩하지 않습니다. 버전·설정/백업 위치·업무 명령·미완료 항목·지원 종료일을 기록하고 고객 로컬에 둡니다.
+3. `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/ek-end-check.ps1" -TargetHome "<고객 홈>" -DryRun` 또는 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/ek-end-check.sh" --home "<고객 홈>" --dry-run`으로 읽기 전용 종료 점검을 합니다. sshd·Tailscale·원격 호스트·이번 세션 예약 작업 결과를 확인합니다.
 4. 있음/확인 필요가 나오면 기존 서비스인지 이번 세션 것인지 고객이 확인합니다. 기존 서비스를 자동 중지·삭제하지 않습니다. 해제 계획 승인 뒤 고객이 조치합니다. Mac SSH 자동 검사가 미확인이면 고객이 시스템 설정 > 일반 > 공유 > 원격 로그인 화면에서 직접 꺼짐을 확인하고 콘솔에 수동 확인 근거를 남깁니다. Quick Assist와 Zoom 공유 종료도 고객이 직접 확인합니다. 자동 결과를 거짓으로 없음으로 바꾸지 않습니다. 수동 확인도 못 하면 ‘잔여 접속 확인 미완료’로 남깁니다.
 5. Zoom 공유·원격 제어 허용을 종료합니다. 녹화·자동 재접속·임시 링크도 확인합니다. 스크립트만으로 Zoom 종료를 보장하지 않습니다.
 6. 2주 뒤 1시간 점검, 30일 메신저 지원을 안내합니다. 영업일 1회 회신, 성수기 2영업일이며 추가 원격 작업은 별도 일정입니다. 도움 요청에는 직접 읽은 마스킹 진단과 오류 문장만 씁니다.

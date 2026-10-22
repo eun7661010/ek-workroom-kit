@@ -3,7 +3,7 @@
 param(
     [string]$Source,[ValidatePattern('^[a-fA-F0-9]{64}$')][string]$ExpectedSha256,
     [string]$TargetHome=$env:USERPROFILE,
-    [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Version='0.1.1',
+    [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Version='0.2.0',
     [switch]$DryRun,[switch]$Apply,[switch]$Library
 )
 $ErrorActionPreference='Stop'
@@ -43,7 +43,7 @@ function Assert-EkZip($Zip) {
     }
 }
 function Initialize-EkKit {
-    param([string]$Source,[string]$ExpectedSha256,[string]$TargetHome,[string]$Version='0.1.1',[switch]$Prepare)
+    param([string]$Source,[string]$ExpectedSha256,[string]$TargetHome,[string]$Version='0.2.0',[switch]$Prepare)
     if(-not $TargetHome -or -not $Source -or $ExpectedSha256 -notmatch '^[a-fA-F0-9]{64}$' -or $Version -notmatch '^[A-Za-z0-9._-]+$') { throw '키트 위치·SHA256·홈 경로·버전을 확인하세요.' }
     $base=Join-Path ([IO.Path]::GetFullPath($TargetHome)) 'ek-workroom'
     $destination=Join-Path $base ('kit-'+$Version)
@@ -128,12 +128,35 @@ function Update-EkProcessPath([string]$TargetHome) {
     $values=@((Join-Path $TargetHome '.local/bin'),$env:PATH,[Environment]::GetEnvironmentVariable('PATH','User'),[Environment]::GetEnvironmentVariable('PATH','Machine'))
     $env:PATH=(@($values -split ';' | Where-Object {$_} | Select-Object -Unique) -join ';')
 }
+function Invoke-EkCodexInstall {
+    param([Parameter(Mandatory=$true)][string]$TargetHome,[Parameter(Mandatory=$true)][string]$KitRoot)
+    try {
+        Update-EkProcessPath -TargetHome $TargetHome
+        if(-not(Get-Command codex -CommandType Application -ErrorAction SilentlyContinue)) {
+            $installer=Join-Path $KitRoot ('.codex-install-'+[guid]::NewGuid().ToString('N')+'.ps1')
+            try {
+                Invoke-WebRequest -Uri 'https://chatgpt.com/codex/install.ps1' -OutFile $installer -UseBasicParsing -TimeoutSec 60
+                $null=Invoke-EkInstallerFile -InstallerPath $installer
+            } finally { if(Test-Path -LiteralPath $installer) { Remove-Item -LiteralPath $installer -Force } }
+            Update-EkProcessPath -TargetHome $TargetHome
+        } else { Write-Host 'Codex CLI가 이미 있어 그대로 사용합니다.' }
+        $command=Get-Command codex -CommandType Application -ErrorAction Stop | Select-Object -First 1
+        & $command.Source --version | ForEach-Object { Write-Host $_ }
+        if($LASTEXITCODE -ne 0) { throw '버전 확인 실패' }
+        Write-Host 'Codex CLI 설치 확인 완료. 고객 본인 계정으로 로그인하세요.'
+        return $true
+    } catch {
+        Write-Host 'Codex 설치 미완료: Claude Code는 유지합니다. 판매자와 설치·로그인을 확인하세요.'
+        return $false
+    }
+}
 if($Library) { return }
 try {
     $verifiedRoot=Initialize-EkKit -Source $Source -ExpectedSha256 $ExpectedSha256 -TargetHome $TargetHome -Version $Version -Prepare:($Apply -and -not $DryRun)
-    Write-Host '[계획 1/3] Claude Code가 없을 때만 공식 HTTPS 설치 파일을 내려받아 별도 PowerShell에서 실행합니다.'
-    Write-Host '[계획 2/3] 고객 본인의 유료 계정으로 claude를 열어 직접 로그인합니다. 비밀번호·인증 코드를 전달하지 마세요.'
-    Write-Host '[계획 3/3] 읽기 전용 진단으로 ek-diag.txt를 만듭니다. 보내기 전에 직접 읽어 보세요.'
+    Write-Host '[계획 1/4] 받은 키트를 검증하고 버전별 고정 위치에 준비합니다.'
+    Write-Host '[계획 2/4] Claude Code가 없을 때만 공식 HTTPS 설치 파일을 별도 PowerShell에서 실행합니다.'
+    Write-Host '[계획 3/4] Codex CLI가 없을 때만 공식 HTTPS 설치 파일을 별도 PowerShell에서 실행하고 버전을 확인합니다.'
+    Write-Host '[계획 4/4] 고객 본인이 직접 로그인하고 읽기 전용 진단 파일을 확인합니다. 비밀번호·인증 코드를 전달하지 마세요.'
     Write-Host 'Node·Python 설치와 업그레이드, 사용자 settings 변경은 하지 않습니다.'
     if(-not $Apply -or $DryRun) { Write-Host '[DryRun] 검증과 계획만 마쳤습니다. 설치·압축 해제·설정 변경 없음.'; exit 0 }
     Update-EkProcessPath -TargetHome $TargetHome
@@ -147,6 +170,7 @@ try {
         $command=Get-Command claude -CommandType Application -ErrorAction Stop | Select-Object -First 1
         if((Get-AuthenticodeSignature -LiteralPath $command.Source).Status -ne 'Valid') { throw 'Claude Code 서명을 확인하지 못했습니다. 실행하지 말고 판매자와 확인하세요.' }
     } else { Write-Host 'Claude Code가 이미 있어 그대로 사용합니다.' }
+    $null=Invoke-EkCodexInstall -TargetHome $TargetHome -KitRoot $verifiedRoot
     Write-Host '새 터미널에서 claude를 열고 고객 본인이 로그인하세요. 브라우저가 안 열리면 표시된 URL을 직접 열고, 나온 코드는 본인 Claude 터미널에 붙여 넣으세요. 판매자는 화면 공유를 잠시 멈춥니다.'
     & (Join-Path $verifiedRoot 'plugins/ek-workroom/scripts/ek-diag.ps1') -TargetHome $TargetHome -OutputPath (Join-Path $TargetHome 'ek-diag.txt')
     if(-not $?) { throw '진단을 마치지 못했습니다.' }

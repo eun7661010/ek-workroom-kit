@@ -6,12 +6,9 @@
   "required": [
     "schemaVersion",
     "os",
-    "plans",
     "securitySoftware",
     "studentDataPaths",
-    "selectedSkills",
-    "workflow",
-    "accountLabel"
+    "workflow"
   ],
   "properties": {
     "schemaVersion": {
@@ -22,24 +19,6 @@
         "windows",
         "macos"
       ]
-    },
-    "plans": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "claude",
-        "codex"
-      ],
-      "properties": {
-        "claude": {
-          "type": "string",
-          "minLength": 1
-        },
-        "codex": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
     },
     "securitySoftware": {
       "type": "array",
@@ -57,34 +36,6 @@
       },
       "uniqueItems": true,
       "description": "고객이 로컬에서 적는 차단 대상 절대 경로. 판매자 AI에 공유하지 않음."
-    },
-    "selectedSkills": {
-      "type": "array",
-      "minItems": 1,
-      "uniqueItems": true,
-      "items": {
-        "enum": [
-          "korean-review",
-          "offline-spacing",
-          "parent-message",
-          "director-column",
-          "blog-copy",
-          "explanation-draft",
-          "question-draft",
-          "hwp-convert",
-          "worksheet-pdf",
-          "scan-cleanup",
-          "spreadsheet-check",
-          "lesson-slides"
-        ]
-      }
-    },
-    "accountLabel": {
-      "enum": [
-        "업무용",
-        "개인용"
-      ],
-      "description": "고객 수동 별칭이며 실제 로그인 계정 검증 값이 아님"
     },
     "workflow": {
       "type": "object",
@@ -113,6 +64,11 @@
           ]
         }
       }
+    },
+    "workspacePath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "선택 비식별 작업실 절대 경로. 생략하면 고객 홈/AI작업실. 학생 폴더와 포함 관계이면 거부."
     }
   }
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 먼저 메신저 붙여넣기 블록에서 이 파일의 SHA256을 확인합니다.
 set -euo pipefail
-source_value=''; expected=''; target_home="${HOME:-}"; version='0.1.1'; apply=0; dry_run=0; prepare_only=0
+source_value=''; expected=''; target_home="${HOME:-}"; version='0.2.0'; apply=0; dry_run=0; prepare_only=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --source) source_value=$2; shift 2 ;;
@@ -122,9 +122,10 @@ except SystemExit: raise
 except Exception:
     stop('검증 또는 준비를 마치지 못했습니다. 설치하지 말고 판매자와 확인하세요.')
 PY
-printf '%s\n' '[계획 1/3] Claude Code가 없을 때만 공식 HTTPS 설치 파일을 받아 별도 bash로 실행합니다.' \
-  '[계획 2/3] 고객 본인의 유료 계정으로 직접 로그인합니다. 비밀번호·인증 코드를 전달하지 마세요.' \
-  '[계획 3/3] 읽기 전용 진단으로 ek-diag.txt를 만듭니다. 보내기 전에 직접 읽어 보세요.' \
+printf '%s\n' '[계획 1/4] 받은 키트를 검증하고 버전별 고정 위치에 준비합니다.' \
+  '[계획 2/4] Claude Code가 없을 때만 공식 HTTPS 설치 파일을 받아 별도 bash로 실행합니다.' \
+  '[계획 3/4] Codex CLI가 없을 때만 공식 HTTPS 설치 파일을 별도 bash로 실행하고 버전을 확인합니다.' \
+  '[계획 4/4] 고객 본인이 직접 로그인하고 읽기 전용 진단 파일을 확인합니다. 비밀번호·인증 코드를 전달하지 마세요.' \
   'Node·Python 설치와 업그레이드, 사용자 settings 변경은 하지 않습니다.'
 if [ "$prepare_only" -eq 1 ] && [ "$dry_run" -eq 0 ]; then exit 0; fi
 if [ "$apply" -ne 1 ]; then printf '%s\n' '[DryRun] 검증과 계획만 마쳤습니다. 설치·압축 해제·설정 변경 없음.'; exit 0; fi
@@ -138,6 +139,26 @@ if ! command -v claude >/dev/null 2>&1; then
   export PATH="$target_home/.local/bin:$PATH"
 else
   printf '%s\n' 'Claude Code가 이미 있어 그대로 사용합니다.'
+fi
+install_codex() {
+  if ! command -v codex >/dev/null 2>&1; then
+    installer=$(mktemp "$verified_root/.codex-install-XXXXXXXX") || return 1
+    if curl --proto '=https' --proto-redir '=https' -fsSL https://chatgpt.com/codex/install.sh -o "$installer" >/dev/null 2>&1; then
+      if bash "$installer" >/dev/null 2>&1; then result=0; else result=$?; fi
+    else result=1; fi
+    rm -f -- "$installer"
+    [ "$result" -eq 0 ] || return "$result"
+    export PATH="$target_home/.local/bin:$PATH"
+    hash -r
+  else
+    printf '%s\n' 'Codex CLI가 이미 있어 그대로 사용합니다.'
+  fi
+  codex --version
+}
+if install_codex; then
+  printf '%s\n' 'Codex CLI 설치 확인 완료. 고객 본인 계정으로 로그인하세요.'
+else
+  printf '%s\n' 'Codex 설치 미완료: Claude Code는 유지합니다. 판매자와 설치·로그인을 확인하세요.'
 fi
 printf '%s\n' '새 터미널에서 claude를 열고 고객 본인이 로그인하세요. 브라우저가 안 열리면 표시된 URL을 직접 열고 나온 코드는 본인 Claude 터미널에 붙여 넣으세요. 판매자는 화면 공유를 잠시 멈춥니다.'
 bash "$verified_root/plugins/ek-workroom/scripts/ek-diag.sh" --home "$target_home" --output "$target_home/ek-diag.txt"

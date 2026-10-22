@@ -31,20 +31,21 @@ try {
     $null=New-Item -ItemType Directory -Force -Path $student
     $profile=Join-Path $homePath 'profile.json'
     $settings=Join-Path $homePath '.claude/settings.json'
-    Save-Json $profile @{studentDataPaths=@($student);accountLabel='업무용'}
+    Save-Json $profile @{studentDataPaths=@($student)}
     foreach($action in @('apply-safety','apply-statusline')) {
+        $callArgs=@('-TargetHome',$homePath); if($action -eq 'apply-safety'){$callArgs+=@('-ProfilePath',$profile)}
         Save-Json $settings @{custom='한글 보존';permissions=@{allow=@('Read(README.md)')}} ([Text.Encoding]::GetEncoding(949))
         $before=(Get-FileHash $settings).Hash
-        $bad=Call-PS "$scripts/$action.ps1" @('-TargetHome',$homePath,'-ProfilePath',$profile,'-Apply')
+        $bad=Call-PS "$scripts/$action.ps1" ($callArgs+@('-Apply'))
         Assert ($bad.Code -ne 0 -and (Get-FileHash $settings).Hash -eq $before -and $bad.Output -match 'UTF-8') "$action CP949 설정 거부·원본 보존·안전 오류"
         Save-Json $settings @{custom='한글 보존';permissions=@{allow=@('Read(README.md)')}} (New-Object Text.UTF8Encoding $true)
-        $good=Call-PS "$scripts/$action.ps1" @('-TargetHome',$homePath,'-ProfilePath',$profile,'-Apply')
+        $good=Call-PS "$scripts/$action.ps1" ($callArgs+@('-Apply'))
         Assert ($good.Code -eq 0 -and (Get-Content -Raw -Encoding UTF8 $settings|ConvertFrom-Json).custom -eq '한글 보존') "$action UTF-8 BOM 설정 병합"
     }
-    Save-Json $profile @{studentDataPaths=@($student);accountLabel='업무용'} ([Text.Encoding]::GetEncoding(949))
+    Save-Json $profile @{studentDataPaths=@($student)} ([Text.Encoding]::GetEncoding(949))
     $badProfile=Call-PS "$scripts/apply-safety.ps1" @('-TargetHome',$homePath,'-ProfilePath',$profile)
     Assert ($badProfile.Code -ne 0 -and $badProfile.Output -match 'UTF-8') 'CP949 프로필 거부'
-    Save-Json $profile @{studentDataPaths=@($student);accountLabel='업무용'} (New-Object Text.UTF8Encoding $true)
+    Save-Json $profile @{studentDataPaths=@($student)} (New-Object Text.UTF8Encoding $true)
     . "$scripts/common.ps1"
     $secret='은광 원장 010.1234.5678 02-123-4567 0507-1234-5678 10.20.30.40 2001:db8::1234'
     $masked=Sanitize-EkText -Text $secret -TargetHome $homePath -UserName '은광' -ComputerName '원장'
@@ -57,7 +58,7 @@ try {
     $link=Join-Path $homePath 'StudentAlias'
     $null=New-Item -ItemType Directory -Path $actual
     $null=New-Item -ItemType Junction -Path $link -Target $actual
-    Save-Json $profile @{studentDataPaths=@($link.ToLowerInvariant());accountLabel='업무용'}
+    Save-Json $profile @{studentDataPaths=@($link.ToLowerInvariant())}
     $safety=Call-PS "$scripts/apply-safety.ps1" @('-TargetHome',$homePath,'-ProfilePath',$profile,'-Apply')
     Assert ($safety.Code -eq 0) '학생 연결 폴더 허용'
     $denies=(Get-Content -Raw -Encoding UTF8 $settings|ConvertFrom-Json).permissions.deny
@@ -85,7 +86,7 @@ try {
 
     $fixture=Join-Path $work 'fixture'
     Save-Json "$fixture/.claude-plugin/marketplace.json" @{name='ek-workroom';owner=@{name='Test'};plugins=@()}
-    Save-Json "$fixture/plugins/ek-workroom/.claude-plugin/plugin.json" @{name='ek-workroom';version='0.1.1'}
+    Save-Json "$fixture/plugins/ek-workroom/.claude-plugin/plugin.json" @{name='ek-workroom';version='0.2.0'}
     $null=New-Item -ItemType Directory -Force "$fixture/plugins/ek-workroom/scripts"
     [IO.File]::WriteAllText("$fixture/plugins/ek-workroom/scripts/ek-diag.ps1","Write-Output 'FAKE_DIAG'`r`n")
     $zip=Join-Path $work 'fixture.zip'
@@ -93,18 +94,18 @@ try {
     [IO.Compression.ZipFile]::CreateFromDirectory($fixture,$zip)
     $hash=(Get-FileHash $zip).Hash
     $prepareHome=Join-Path $work 'prepare-home';$null=New-Item -ItemType Directory $prepareHome
-    $prepared=Initialize-EkKit -Source $zip -ExpectedSha256 $hash -TargetHome $prepareHome -Version '0.1.1' -Prepare
-    $expected=Join-Path $prepareHome 'ek-workroom/kit-0.1.1'
+    $prepared=Initialize-EkKit -Source $zip -ExpectedSha256 $hash -TargetHome $prepareHome -Version '0.2.0' -Prepare
+    $expected=Join-Path $prepareHome 'ek-workroom/kit-0.2.0'
     Assert ($prepared -eq $expected -and (Test-Path "$expected/plugins/ek-workroom/scripts/ek-diag.ps1")) '고정 설치 위치에 검증한 키트만 준비'
-    $already=$false;try { $null=Initialize-EkKit -Source $zip -ExpectedSha256 $hash -TargetHome $prepareHome -Version '0.1.1' -Prepare } catch {$already=$true}
+    $already=$false;try { $null=Initialize-EkKit -Source $zip -ExpectedSha256 $hash -TargetHome $prepareHome -Version '0.2.0' -Prepare } catch {$already=$true}
     Assert $already '같은 고정 위치 재실행 거부'
 
     $release=Join-Path $work 'release'
-    $built=Call-PS "$root/bootstrap/make-release.ps1" @('-OutputDirectory',$release,'-ReleaseBaseUrl','https://release.example.test/kit','-Version','0.1.1')
-    Assert ($built.Code -eq 0) 'v0.1.1 릴리스 생성'
+    $built=Call-PS "$root/bootstrap/make-release.ps1" @('-OutputDirectory',$release,'-ReleaseBaseUrl','https://release.example.test/kit','-Version','0.2.0')
+    Assert ($built.Code -eq 0) 'v0.2.0 릴리스 생성'
     foreach($name in @('paste-block-windows.txt','paste-block-mac.txt')) {
         $block=[IO.File]::ReadAllText((Join-Path $release $name))
-        Assert ($block -match '0.1.1' -and $block -match 'https://release.example.test/kit/0.1.1' -and $block -notmatch '__[A-Z_]+__' -and $block -match '[a-f0-9]{64}') "$name 버전·HTTPS·해시 채움"
+        Assert ($block -match '0.2.0' -and $block -match 'https://release.example.test/kit/0.2.0' -and $block -notmatch '__[A-Z_]+__' -and $block -match '[a-f0-9]{64}') "$name 버전·HTTPS·해시 채움"
     }
     $checks=& python "$PSScriptRoot/test_v011.py" $work $release 2>&1 | Out-String
     Assert ($LASTEXITCODE -eq 0) 'UTF-8 상태줄·Mac 경로·붙여넣기 블록·ZIP 개행·제어문자 회귀'

@@ -124,6 +124,58 @@ function Get-EkProfile([string]$ProfilePath) {
     return $p
 }
 
+# 아직 없는 출력 경로도 가장 가까운 기존 상위 폴더의 최종 경로로 투영합니다.
+function Get-EkProjectedPath([string]$Path) {
+    $full = [IO.Path]::GetFullPath($Path)
+    $cursor = $full
+    $tail = New-Object 'System.Collections.Generic.Stack[string]'
+    while (-not (Test-Path -LiteralPath $cursor)) {
+        $tail.Push([IO.Path]::GetFileName($cursor))
+        $parent = [IO.Path]::GetDirectoryName($cursor)
+        if (-not $parent -or $parent -eq $cursor) { Throw-EkInput '실제 저장 경로를 확인할 수 없습니다.' }
+        $cursor = $parent
+    }
+    $real = Get-EkFinalPath $cursor
+    while ($tail.Count) { $real = Join-Path $real $tail.Pop() }
+    return [IO.Path]::GetFullPath($real)
+}
+function Test-EkWithin([string]$Child, [string]$Parent) {
+    $c = $Child.TrimEnd('\','/'); $p = $Parent.TrimEnd('\','/')
+    return $c.Equals($p,[StringComparison]::OrdinalIgnoreCase) -or $c.StartsWith($p+'\',[StringComparison]::OrdinalIgnoreCase)
+}
+function Assert-EkNewOutput([string]$Path) {
+    if (Test-Path -LiteralPath $Path) { Throw-EkInput '출력 파일이 이미 있습니다. 새 파일 이름을 지정하세요.' }
+    if (-not (Test-Path -LiteralPath ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Path))) -PathType Container)) { Throw-EkInput '출력 폴더를 먼저 만들고 다시 실행하세요.' }
+}
+# Windows 인자 escaping은 셸 문법을 거치지 않고 CreateProcess 인자 규칙을 따릅니다.
+function ConvertTo-EkArgument([string]$Value) {
+    return '"' + [regex]::Replace([regex]::Replace($Value,'(\\*)"','$1$1\"'),'(\\+)$','$1$1') + '"'
+}
+function Start-EkProcess([string]$Executable, [string[]]$Arguments, [string]$InputText = '', [int]$TimeoutSeconds = 120) {
+    [Console]::InputEncoding = New-Object Text.UTF8Encoding $false
+    $info = New-Object Diagnostics.ProcessStartInfo
+    $info.FileName = $Executable
+    $info.Arguments = (@($Arguments | ForEach-Object { ConvertTo-EkArgument $_ }) -join ' ')
+    $info.UseShellExecute = $false; $info.CreateNoWindow = $true
+    $info.RedirectStandardOutput = $true; $info.RedirectStandardError = $true; $info.RedirectStandardInput = $true
+    $info.StandardOutputEncoding = New-Object Text.UTF8Encoding $false
+    $process = New-Object Diagnostics.Process
+    $process.StartInfo = $info
+    try {
+        $null = $process.Start()
+        $stdout = $process.StandardOutput.ReadToEndAsync(); $stderr = $process.StandardError.ReadToEndAsync()
+        $process.StandardInput.Write($InputText); $process.StandardInput.Close()
+        if ($TimeoutSeconds -gt 0) { $ended = $process.WaitForExit($TimeoutSeconds * 1000) }
+        else { $process.WaitForExit(); $ended = $true }
+        if (-not $ended) { $process.Kill(); $process.WaitForExit(); Throw-EkInput '실행 시간이 초과되었습니다. 다시 시도하세요.' }
+        $process.WaitForExit()
+        # 자식이 상속한 파이프를 계속 열고 있어도 완료된 부모를 붙잡지 않습니다.
+        $capturedOut = if ($stdout.IsCompleted -and -not $stdout.IsFaulted) { $stdout.Result } else { '' }
+        $capturedError = if ($stderr.IsCompleted -and -not $stderr.IsFaulted) { $stderr.Result } else { '' }
+        return @{ Code=$process.ExitCode; Output=$capturedOut; Error=$capturedError }
+    } finally { $process.Dispose() }
+}
+
 function Sanitize-EkText([string]$Text, [string]$TargetHome, [string]$UserName = $env:USERNAME, [string]$ComputerName = $env:COMPUTERNAME) {
     $pairs = @(@($env:USERPROFILE,'<HOME>'),@($TargetHome,'<HOME>'),@($UserName,'<USER>'),@($ComputerName,'<COMPUTER>'),@((Split-Path $TargetHome -Leaf),'<USER>'))
     foreach ($pair in $pairs) {
