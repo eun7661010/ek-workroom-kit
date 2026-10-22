@@ -140,6 +140,9 @@ try {
     $newTests = Run-Python "$PSScriptRoot/test_v020.py" @($run)
     Check ($newTests.Code -eq 0) 'v0.2.1 실행 도구·대상 경계·도구 없는 CLI 시험'
     Write-Host $newTests.Output
+    $customerTests = Run-Python "$PSScriptRoot/test_customer_skills.py" @($run)
+    Check ($customerTests.Code -eq 0) '고객 스킬 10개·고정 템플릿·실제 Edge 조판 검증'
+    Write-Host $customerTests.Output
     $pdfTests = Run-Python "$PSScriptRoot/test_pdf_isolation.py" @($run)
     Check ($pdfTests.Code -eq 0) 'HTTP 서버 격리·실제 Edge PDF·비밀 이미지 차단'
     Write-Host $pdfTests.Output

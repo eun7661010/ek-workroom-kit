@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>수업 슬라이드 · 단원명</title>
+<style>
+@page{size:1280px 720px;margin:0}
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#18212b;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;word-break:keep-all;overflow-wrap:break-word}
+.slide{width:1280px;height:720px;padding:64px 80px;break-inside:avoid;break-after:page;page-break-after:always;display:flex;flex-direction:column;border-top:12px solid #263d52}
+.slide:last-child{break-after:auto;page-break-after:auto}
+.eyebrow{font-size:22px;margin:0 0 24px;color:#41556a}
+h1,h2{font-size:48px;line-height:1.25;margin:0 0 32px}
+.message{font-size:36px;line-height:1.5;margin:0 0 24px}
+.points{font-size:30px;line-height:1.6;margin:0;padding-left:40px}
+.source{font-size:20px;line-height:1.5;margin-top:24px;color:#41556a}
+.slide-footer{margin-top:auto;padding-top:20px;font-size:20px;color:#41556a}
+img{max-width:100%;max-height:300px;object-fit:contain}
+/* 메모는 이 별도 섹션 형식을 참고해 Markdown 파일로 옮기고 덱에서는 내용을 비운다. */
+.speaker-notes{display:none}
+@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.speaker-notes{display:none}}
+</style>
+</head>
+<body>
+<!-- 같은 폴더 또는 하위 폴더 상대 경로 이미지만 사용한다. 한 장 한 메시지, 넘치면 장을 나눈다. -->
+<main class="deck">
+  <section class="slide" aria-labelledby="slide-1">
+    <p class="eyebrow">가상 배움학원 · 중1 과학 · 밀도</p>
+    <h1 id="slide-1">밀도는 같은 부피에서 비교합니다</h1>
+    <p class="message">같은 부피라면 질량이 큰 물체의 밀도가 큽니다.</p>
+    <ul class="points"><li>밀도 = 질량 ÷ 부피</li><li>질량과 부피의 단위를 함께 확인합니다.</li></ul>
+    <p class="source">근거: 제공된 수업 개념식 · 가상 수업 자료</p>
+    <footer class="slide-footer">1 · 개념 이해</footer>
+  </section>
+  <section class="slide" aria-labelledby="slide-2">
+    <p class="eyebrow">확인 질문</p>
+    <h2 id="slide-2">두 물체의 부피가 같다면?</h2>
+    <p class="message">질량을 비교하고 그 이유를 한 문장으로 설명하세요.</p>
+    <ul class="points"><li>A: 부피 10 cm³, 질량 20 g</li><li>B: 부피 10 cm³, 질량 30 g</li></ul>
+    <footer class="slide-footer">2 · 다음 행동: 단위를 포함해 설명하기</footer>
+  </section>
+</main>
+<section class="speaker-notes" aria-label="발표자 메모"></section>
+</body>
+</html>

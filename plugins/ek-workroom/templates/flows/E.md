@@ -10,8 +10,9 @@
 ```
 
 ## 실행 한 줄
+양식은 `${CLAUDE_PLUGIN_ROOT}/templates/`에서 찾습니다. 아래 `templates/`는 이 절대 경로를 뜻합니다.
 원장님이 위 더미 입력 또는 새 비식별 샘플을 작업실의 `./입력/E-입력.txt`에 직접 저장합니다. 입력이 없으면 파일 탐색 없이 멈추고 정확한 위치를 확인합니다. `새번호`는 기존 결과와 겹치지 않는 번호로 바꿉니다.
-`/ek-workroom:worksheet-pdf ./입력/E-입력.txt만 읽고 업무 E의 학생용·정답용 A4 HTML과 PDF를 ./결과/E-학생용-새번호.html/.pdf, ./결과/E-정답용-새번호.html/.pdf에 만들 계획을 보여 주세요. 승인 후 새 HTML 두 개를 만들고 ek-pdf로 각각 PDF까지 생성해 모든 쪽을 열어 확인해 주세요.`
+`/ek-workroom:worksheet-pdf ./입력/E-입력.txt만 읽고 templates/worksheet-a4.html과 templates/answer-a4.html을 복사해 ./결과/E-학생용-새번호.html/.pdf 및 ./결과/E-정답용-새번호.html/.pdf를 만들 계획을 보여 주세요. 원장 승인 후 즉석 CSS 없이 새 HTML 두 개를 만들고 ek-pdf로 각각 렌더해 모든 쪽을 열어 확인해 주세요.`
 
 ## 결과와 검수
 - 결과: 학생용/정답용 HTML과 인쇄 PDF
