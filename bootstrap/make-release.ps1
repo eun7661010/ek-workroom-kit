@@ -3,7 +3,8 @@
 param(
     [Alias('OutputDir')][string]$OutputDirectory,
     [string]$SourceDirectory,
-    [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Version='0.1.0'
+    [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Version='0.1.1',
+    [ValidatePattern('^https://[A-Za-z0-9][^\s''"`]*$')][string]$ReleaseBaseUrl='https://example.invalid/ek-workroom'
 )
 $ErrorActionPreference='Stop'
 try {
@@ -21,7 +22,7 @@ try {
     if((Get-Item -LiteralPath $sourceRoot -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw '연결 폴더는 릴리스 원본으로 사용할 수 없습니다.' }
     $stage=Join-Path $outRoot 'staging'
     $null=New-Item -ItemType Directory -Path $stage
-    $items=@('.claude-plugin','plugins','bootstrap','kit','console','docs','tests','README.md')
+    $items=@('.claude-plugin','plugins','bootstrap','kit','console','docs','tests','README.md','.gitattributes')
     $manifestPaths=New-Object 'System.Collections.Generic.List[string]'
     $fileMap=@{}
     function Copy-Safe([string]$src,[string]$dst) {
@@ -32,6 +33,7 @@ try {
             $null=New-Item -ItemType Directory -Path $dst -Force
             foreach($child in Get-ChildItem -LiteralPath $src -Force) { Copy-Safe $child.FullName (Join-Path $dst $child.Name) }
         } else {
+            if($item.Extension -in @('.sh','.py') -and [Array]::IndexOf([IO.File]::ReadAllBytes($src),[byte]13) -ge 0) { throw 'Mac 실행 파일에 CR 바이트가 있습니다. LF로 저장하고 다시 만드세요.' }
             Copy-Item -LiteralPath $src -Destination $dst
             $relative=$dst.Substring($stage.Length+1).Replace('\','/')
             if($relative -match '[\r\n:]') { throw '지원하지 않는 파일 이름입니다.' }
@@ -71,9 +73,46 @@ try {
         }
     }
     [IO.File]::WriteAllText((Join-Path $outRoot 'SHA256SUMS.txt'),$sums.ToString(),$utf8)
+    $baseUrl=$ReleaseBaseUrl.TrimEnd('/')+'/'+$Version
+    $psHash=(Get-FileHash -LiteralPath (Join-Path $outRoot 'bootstrap.ps1') -Algorithm SHA256).Hash.ToLowerInvariant()
+    $shHash=(Get-FileHash -LiteralPath (Join-Path $outRoot 'bootstrap.sh') -Algorithm SHA256).Hash.ToLowerInvariant()
+    # 블록은 메신저로, 실행 파일·ZIP은 HTTPS로 따로 전달합니다.
+    $windows=@'
+& {
+    $ErrorActionPreference = 'Stop'
+    $ekVersion = '__VERSION__'
+    $ekExpected = '__BOOTSTRAP_HASH__'
+    $ekFolder = Join-Path $env:USERPROFILE 'ek-workroom'
+    $null = New-Item -ItemType Directory -Path $ekFolder -Force
+    $ekFile = Join-Path $ekFolder ('bootstrap-' + $ekVersion + '-' + [guid]::NewGuid().ToString('N') + '.ps1')
+    Invoke-WebRequest -UseBasicParsing -Uri '__BASE_URL__/bootstrap.ps1' -OutFile $ekFile
+    if ((Get-FileHash -LiteralPath $ekFile -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ekExpected) { throw '파일 확인값이 다릅니다. 실행하지 말고 판매자에게 알려 주세요.' }
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ekFile -Source '__BASE_URL__/__ZIP_NAME__' -ExpectedSha256 '__ZIP_HASH__' -Version $ekVersion -DryRun
+    if ($LASTEXITCODE -ne 0) { throw '미리보기를 마치지 못했습니다. 판매자와 확인하세요.' }
+}
+'@
+    $mac=@'
+(
+set -eu
+ek_version='__VERSION__'
+ek_expected='__BOOTSTRAP_HASH__'
+mkdir -p "$HOME/ek-workroom"
+ek_file=$(mktemp "$HOME/ek-workroom/bootstrap-${ek_version}-XXXXXXXX")
+curl --proto '=https' --proto-redir '=https' -fsSL '__BASE_URL__/bootstrap.sh' -o "$ek_file"
+ek_actual=$(shasum -a 256 "$ek_file" | cut -d ' ' -f 1)
+if [ "$ek_actual" != "$ek_expected" ]; then printf '%s\n' '파일 확인값이 다릅니다. 실행하지 말고 판매자에게 알려 주세요.'; exit 1; fi
+bash "$ek_file" --source '__BASE_URL__/__ZIP_NAME__' --expected-sha256 '__ZIP_HASH__' --version "$ek_version" --dry-run
+)
+'@
+    $windows=$windows.Replace('__VERSION__',$Version).Replace('__BOOTSTRAP_HASH__',$psHash).Replace('__BASE_URL__',$baseUrl).Replace('__ZIP_NAME__',$zipName).Replace('__ZIP_HASH__',$zipHash)
+    $mac=$mac.Replace('__VERSION__',$Version).Replace('__BOOTSTRAP_HASH__',$shHash).Replace('__BASE_URL__',$baseUrl).Replace('__ZIP_NAME__',$zipName).Replace('__ZIP_HASH__',$zipHash)
+    [IO.File]::WriteAllText((Join-Path $outRoot 'paste-block-windows.txt'),$windows.Replace("`r`n","`n").Replace("`n","`r`n")+"`r`n",(New-Object Text.UTF8Encoding $true))
+    [IO.File]::WriteAllText((Join-Path $outRoot 'paste-block-mac.txt'),$mac.Replace("`r`n","`n")+"`n",$utf8)
     Write-Host ('릴리스 ZIP 생성: '+$zipName)
     Write-Host ('ZIP SHA256: '+$zipHash)
     Write-Host ('폴더 SHA256: '+$folderHash)
     Write-Host 'SHA256SUMS.txt에는 ZIP과 별도 전달할 bootstrap 파일의 해시가 있습니다. 업로드하지 않았습니다.'
+    Write-Host 'paste-block-windows.txt / paste-block-mac.txt를 만들었습니다. 버전 하위 URL에 파일을 올린 뒤 블록을 메신저로 전달하세요.'
+    if(([uri]$ReleaseBaseUrl).Host -eq 'example.invalid') { Write-Host '미배포 예시 주소입니다. 실제 고객에게 보내기 전 -ReleaseBaseUrl에 판매자 HTTPS 주소를 지정해 다시 만드세요.' }
 } catch { Write-Host ('릴리스를 만들지 못했습니다: '+$_.Exception.Message); exit 1 }
 exit 0

@@ -12,18 +12,61 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 
 
-def safe_path(path):
-    for candidate in [path, *path.parents]:
-        if candidate.is_symlink():
-            raise ValueError('연결 경로에는 쓰지 않습니다.')
+class SafeInputError(ValueError):
+    """정해진 검증 문구만 공유합니다. 시스템 예외에는 사용하지 않습니다."""
+
+
+def safe_path(path, home):
+    home = Path(home).absolute()
+    path = Path(path).absolute()
+    if not path.is_relative_to(home):
+        raise SafeInputError('저장은 지정한 홈 안에서만 가능합니다.')
+    # /var, /tmp 같은 상위 시스템 별칭은 허용합니다. 홈 아래 연결은
+    # 최종 경로가 같은 홈 안에 남는 경우에만 허용합니다.
+    if not path.resolve().is_relative_to(home.resolve()):
+        raise SafeInputError('홈 밖으로 연결된 저장 경로에는 쓰지 않습니다.')
+
+
+def student_paths(folder, home):
+    if not isinstance(folder, str):
+        raise SafeInputError('학생 폴더 경로는 문자열이어야 합니다.')
+    folder = folder.strip()
+    entered = Path(folder)
+    if (not entered.is_absolute() or folder.startswith('//') or
+            re.search(r'[\r\n*?\[\]{}!]', folder) or '..' in entered.parts):
+        raise SafeInputError('와일드카드 없는 로컬 절대 경로가 필요합니다.')
+    if entered == Path(entered.anchor) or entered.resolve() == Path(home).resolve():
+        raise SafeInputError('드라이브 루트나 홈 전체는 학생 폴더로 지정할 수 없습니다.')
+    if not entered.is_dir():
+        raise SafeInputError('학생정보 폴더가 없습니다. 프로필의 경로를 확인하세요.')
+    actual = entered.resolve(strict=True)
+    if actual == Path(actual.anchor):
+        raise SafeInputError('드라이브 루트는 학생 폴더로 지정할 수 없습니다.')
+    variants = []
+    for value in (str(entered), str(actual)):
+        for form in ('NFC', 'NFD'):
+            normalized = unicodedata.normalize(form, value)
+            if normalized not in variants:
+                variants.append(normalized)
+    return variants
 
 
 def obj(path):
-    value = json.loads(path.read_text(encoding='utf-8-sig'))
+    try:
+        raw = path.read_text(encoding='utf-8-sig', errors='strict')
+    except UnicodeError:
+        raise SafeInputError('인코딩 오류입니다. UTF-8로 저장한 뒤 다시 실행하세요. 원본을 유지합니다.')
+    if '\ufffd' in raw:
+        raise SafeInputError('인코딩 오류입니다. UTF-8로 저장한 뒤 다시 실행하세요. 원본을 유지합니다.')
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        raise SafeInputError('JSON을 읽을 수 없습니다. 원본을 유지합니다. 판매자와 확인하세요.')
     if not isinstance(value, dict):
-        raise ValueError('JSON 객체가 필요합니다.')
+        raise SafeInputError('JSON 객체가 필요합니다.')
     return value
 
 
@@ -43,8 +86,8 @@ def backup(path):
         f.write(path.read_bytes())
 
 
-def save(path, data):
-    safe_path(path)
+def save(path, data, home):
+    safe_path(path, home)
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists() and path.read_bytes() == data:
         return
@@ -58,50 +101,47 @@ def save(path, data):
 
 def settings(a):
     path = a.home / '.claude/settings.json'
-    safe_path(path)
+    safe_path(path, a.home)
     value = obj(path) if path.exists() else {}
     before = copy.deepcopy(value)
     profile = obj(Path(a.profile))
     paths = profile.get('studentDataPaths')
     if not isinstance(paths, list) or not paths:
-        raise ValueError('studentDataPaths 배열에 폴더 1개 이상이 필요합니다.')
+        raise SafeInputError('studentDataPaths 배열에 폴더 1개 이상이 필요합니다.')
     extra = None
     if a.action == 'apply-safety':
         perm = value.setdefault('permissions', {})
         if not isinstance(perm, dict):
-            raise ValueError('permissions 객체가 필요합니다.')
+            raise SafeInputError('permissions 객체가 필요합니다.')
         rules = []
         for folder in paths:
-            if (not isinstance(folder, str) or not folder.startswith('/') or
-                    folder.startswith('//') or re.search(r'[\r\n*?\[\]{}!]', folder) or
-                    '..' in Path(folder).parts):
-                raise ValueError('와일드카드 없는 로컬 절대 경로가 필요합니다.')
-            anchor = '/' + folder.rstrip('/')
-            for tool in ('Read', 'Edit'):
-                rules.extend([f'{tool}({anchor})', f'{tool}({anchor}/**)'])
+            for candidate in student_paths(folder, a.home):
+                anchor = '/' + candidate.rstrip('/')
+                for tool in ('Read', 'Edit'):
+                    rules.extend([f'{tool}({anchor})', f'{tool}({anchor}/**)'])
         for key, additions in [('deny', rules), ('ask', ['Bash', 'PowerShell', 'WebFetch', 'WebSearch', 'mcp__*'])]:
             old = perm.get(key, [])
             if not isinstance(old, list) or any(not isinstance(x, str) for x in old):
-                raise ValueError('권한 목록은 문자열 배열이어야 합니다.')
+                raise SafeInputError('권한 목록은 문자열 배열이어야 합니다.')
             perm[key] = list(dict.fromkeys(old + additions))
         perm['defaultMode'] = 'default'
         perm['disableBypassPermissionsMode'] = 'disable'
     else:
         label = profile.get('accountLabel')
         if label not in ('업무용', '개인용'):
-            raise ValueError('계정 별칭을 확인하세요.')
+            raise SafeInputError('계정 별칭을 확인하세요.')
         dest = a.home / '.claude/ek-workroom/ek_engine.py'
-        safe_path(dest)
+        safe_path(dest, a.home)
         text = str(dest)
         if re.search(r'[\r\n"$`]', text):
-            raise ValueError('홈 경로의 특수문자를 확인하세요.')
+            raise SafeInputError('홈 경로의 특수문자를 확인하세요.')
         line = value.setdefault('statusLine', {})
         if not isinstance(line, dict):
-            raise ValueError('statusLine 객체가 필요합니다.')
+            raise SafeInputError('statusLine 객체가 필요합니다.')
         # 현재 확인한 Python 경로를 고정합니다. Node 설치는 필요 없습니다.
         python = sys.executable
         if re.search(r'[\r\n"$`]', python):
-            raise ValueError('실행기 경로를 확인하세요.')
+            raise SafeInputError('실행기 경로를 확인하세요.')
         line.update(type='command', command=f'"{python}" "{text}" statusline --account-label {"work" if label == "업무용" else "personal"}')
         extra = (dest, Path(__file__).read_bytes())
     encoded = (json.dumps(value, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
@@ -112,13 +152,36 @@ def settings(a):
             print('상태줄 실행기 1개를 고객 홈의 .claude/ek-workroom에 복사할 예정입니다.')
     else:
         if extra:
-            save(*extra)
+            save(*extra, home=a.home)
         if value != before or not path.exists():
-            save(path, encoded)
+            save(path, encoded, a.home)
             print('설정을 저장했습니다. 기존 파일이 있으면 수정 전 백업도 남겼습니다.')
         else:
             print('이미 같은 설정입니다. 변경과 새 백업이 없습니다.')
-    print('학생 폴더 차단은 도구 규칙입니다. 셸에서 간접 읽기는 승인 시 거절하세요. 계정 별칭은 /status에서 확인하세요.')
+    print('학생 폴더 차단은 Claude 도구 규칙이며 OS 권한 보호가 아닙니다. 셸 승인 요청에 학생 폴더 경로가 보이면 거절하세요. 설정한 별칭은 수동 고정값이며 실제 계정은 /status에서 확인하세요.')
+
+
+def mask_text(text, home, user=None, computer=None):
+    """진단은 고정 라벨·숫자만 수집합니다. 이 함수는 추가 방어입니다."""
+    values = [(str(home), '<HOME>'), (str(Path.home()), '<HOME>'),
+              (user if user is not None else os.environ.get('USER'), '<USER>'),
+              (computer if computer is not None else platform.node(), '<COMPUTER>'),
+              (Path(home).name, '<USER>')]
+    for raw, token in values:
+        if raw:
+            for candidate in {raw, raw.replace('\\', '/'), raw.replace('/', '\\')}:
+                text = re.sub(re.escape(candidate), lambda _: token, text, flags=re.I)
+    text = re.sub(r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}', '<EMAIL>', text)
+    text = re.sub(r'(?<!\d)0(?:1[016789]|2|[3-6]\d|70|50\d?)[-. ]?\d{3,4}[-. ]?\d{4}(?!\d)', '<PHONE>', text)
+    def hide_ip(match):
+        try:
+            ipaddress.ip_address(match.group().split('%')[0])
+            return '<IP>'
+        except ValueError:
+            return match.group()
+    text = re.sub(r'(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])', hide_ip, text)
+    text = re.sub(r'(?<![\w:])(?:[0-9A-Fa-f]{0,4}:){2,}[0-9A-Fa-f:.]*(?:%[\w.-]+)?(?![\w:])', hide_ip, text)
+    return text
 
 
 def diag(a):
@@ -140,26 +203,13 @@ def diag(a):
     for host in ('claude.ai', 'chatgpt.com'):
         code, _ = command(['curl', '--head', '--silent', '--max-time', '4', 'https://' + host])
         lines.append(host + ': ' + ('도달함' if code == 0 else '확인 불가'))
-    result = '\n'.join(lines)
-    for raw, token in [(str(a.home), '<HOME>'), (str(Path.home()), '<HOME>'),
-                       (os.environ.get('USER'), '<USER>'), (platform.node(), '<COMPUTER>')]:
-        if raw and len(raw) > 2:
-            result = re.sub(re.escape(raw), lambda _: token, result, flags=re.I)
-    result = re.sub(r'[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}', '<EMAIL>', result)
-    result = re.sub(r'01[016789][- ]?\d{3,4}[- ]?\d{4}', '<PHONE>', result)
-    def hide_ip(match):
-        try:
-            ipaddress.ip_address(match.group())
-            return '<IP>'
-        except ValueError:
-            return match.group()
-    result = re.sub(r'(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])', hide_ip, result)
+    result = mask_text('\n'.join(lines), a.home)
     output = Path(a.output) if a.output else a.home / 'ek-diag.txt'
     if not output.is_absolute():
         output = Path.cwd() / output
     if not output.resolve().is_relative_to(a.home.resolve()):
-        raise ValueError('진단 저장은 지정한 홈 안에서만 가능합니다.')
-    safe_path(output)
+        raise SafeInputError('진단 저장은 지정한 홈 안에서만 가능합니다.')
+    safe_path(output, a.home)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(result + '\n', encoding='utf-8')
     print(result)
@@ -174,8 +224,14 @@ def end_check(a):
         found |= on
         print('OpenSSH 서버: ' + ('켜짐' if on else '꺼짐'))
     else:
-        unknown = True
-        print('OpenSSH 서버: 확인 불가. 시스템 설정 > 일반 > 공유에서 원격 로그인을 확인하세요.')
+        process_code, _ = command(['pgrep', '-x', 'sshd'])
+        service_code, service_raw = command(['launchctl', 'print', 'system/com.openssh.sshd'])
+        if process_code == 0 or service_code == 0:
+            found = True
+            print('OpenSSH 서버: 프로세스 또는 등록 서비스가 있습니다. 시스템 설정에서 원격 로그인을 확인하세요.')
+        else:
+            unknown = True
+            print('OpenSSH 서버: 실행 흔적은 확인되지 않았지만 꺼짐을 확정할 수 없습니다. 시스템 설정 > 일반 > 공유 > 원격 로그인을 직접 확인하세요.')
     if shutil.which('tailscale'):
         code, raw = command(['tailscale', 'status', '--json'])
         try:
@@ -220,7 +276,7 @@ def main():
     parser.add_argument('--account-label', choices=['work', 'personal'], default='work')
     a = parser.parse_args()
     if not a.home.is_absolute():
-        raise ValueError('홈 경로는 절대 경로로 입력하세요.')
+        raise SafeInputError('홈 경로는 절대 경로로 입력하세요.')
     if a.action.startswith('apply-'):
         settings(a)
     elif a.action == 'ek-diag':
@@ -232,12 +288,15 @@ def main():
         model = session.get('model', {}).get('display_name', '확인 필요')
         folder = Path(session.get('workspace', {}).get('current_dir') or session.get('cwd', '')).name
         clean = lambda x: re.sub(r'[\x00-\x1f\x7f]', '', str(x))
-        print(f'모델 {clean(model)} | 폴더 {clean(folder)} | 계정 별칭 {"업무용" if a.account_label == "work" else "개인용"} (/status 확인)')
+        print(f'모델 {clean(model)} | 폴더 {clean(folder)} | 설정한 별칭: {"업무용" if a.account_label == "work" else "개인용"} (수동 고정값, 실제 계정은 /status 확인)')
 
 
 if __name__ == '__main__':
     try:
         main()
+    except SafeInputError as error:
+        print('실패: ' + str(error), file=sys.stderr)
+        sys.exit(1)
     except Exception:
         print('실패: 프로필·기존 JSON·경로·필수 도구를 확인하세요. 상세 원문은 공유하지 마세요.', file=sys.stderr)
         sys.exit(1)

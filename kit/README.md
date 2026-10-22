@@ -12,7 +12,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\kit\ek-setup.ps1 -Profile 
 
 `report.json`의 `schema: ek-setup/0.1`은 기존 소비자와의 호환을 위해 유지하고 `kitVersion: 0.2`로 구현 버전을 구별합니다. 진단에는 버전 번호·OS·PATH 항목 수·디스크 여유·실행 정책만 기록합니다. 파일 내용·폴더 목록·사용자명·연락처·IP·홈 경로는 수집하지 않습니다. 고객은 먼저 내용을 읽고 마스킹된 `ek-diag.txt`만 판매자에게 전달합니다. 리포트 자동 전송은 없습니다.
 
-실행 정책·보안 SW·환경변수를 영구 변경하지 않습니다. 비밀번호·인증 코드는 고객 본인이 입력하며 고객 본인의 유료 구독 계정으로 로그인합니다. API 키는 받지 않습니다.
+공식 설치 파일은 HTTPS로 받은 뒤 별도 PowerShell에서 실행하므로 설치 파일의 `exit`가 리포트 생성을 끊지 않습니다. 새 Claude 실행 파일은 Windows 서명 상태도 확인합니다. 설치 뒤 현재 터미널의 PATH만 새로 읽으며 영구 PATH는 직접 변경하지 않습니다.
+
+Git·Everything 설치에 관리자 승인 창이 나오면 고객이 PC에서 직접 확인합니다. 원격 화면 공유를 잠시 멈추고, 관리자 권한이 없으면 해당 설치를 보류하세요. VS Code는 사용자 범위 설치를 요청합니다. Everything 설치 여부는 GUI 실행 파일과 등록 위치로 확인하며 별도 제품인 `es` CLI의 존재와 구분합니다.
+
+실행 정책·보안 SW·환경변수를 영구 변경하지 않습니다. 비밀번호·인증 코드는 고객 본인이 입력하며 고객 본인의 유료 구독 계정으로 로그인합니다. API 키는 받지 않습니다. Claude 브라우저가 열리지 않으면 터미널에 표시된 URL을 직접 열고 나온 코드를 본인 Claude 터미널에 붙여 넣습니다. Codex는 `codex login --device-auth`를 사용할 수 있습니다. 코드를 판매자에게 보내지 않습니다.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\kit\tests\Test-Setup.ps1

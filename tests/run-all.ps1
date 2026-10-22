@@ -5,7 +5,7 @@ $run = Join-Path $root ('.tmp/test-' + (Get-Date -Format 'yyyyMMddTHHmmssffff'))
 $null = New-Item -ItemType Directory -Path $run -Force
 $realHome = $env:USERPROFILE
 $savedEnv = @{}
-foreach ($key in @('USERPROFILE','HOME','CLAUDE_CONFIG_DIR','CODEX_HOME')) { $savedEnv[$key] = [Environment]::GetEnvironmentVariable($key,'Process') }
+foreach ($key in @('USERPROFILE','HOME','CLAUDE_CONFIG_DIR','CODEX_HOME','TEMP','TMP','PYTHONDONTWRITEBYTECODE')) { $savedEnv[$key] = [Environment]::GetEnvironmentVariable($key,'Process') }
 $failures = New-Object 'System.Collections.Generic.List[string]'
 function Check([bool]$Condition,[string]$Name) {
     if ($Condition) { Write-Host ('PASS ' + $Name) }
@@ -27,7 +27,10 @@ try {
     $env:HOME = $env:USERPROFILE
     $env:CLAUDE_CONFIG_DIR = Join-Path $run 'claude-config'
     $env:CODEX_HOME = Join-Path $run 'codex-config'
-    foreach ($dir in @($env:USERPROFILE,$env:CLAUDE_CONFIG_DIR,$env:CODEX_HOME)) { $null = New-Item -ItemType Directory -Path $dir -Force }
+    $env:TEMP = Join-Path $run 'os-temp'
+    $env:TMP = $env:TEMP
+    $env:PYTHONDONTWRITEBYTECODE = '1'
+    foreach ($dir in @($env:USERPROFILE,$env:CLAUDE_CONFIG_DIR,$env:CODEX_HOME,$env:TEMP)) { $null = New-Item -ItemType Directory -Path $dir -Force }
     $scripts = Join-Path $root 'plugins/ek-workroom/scripts'
 
     $legacy = Run-PS "$root/kit/tests/Test-Setup.ps1" @()
@@ -52,7 +55,9 @@ try {
             $settings = Join-Path $homePath '.claude/settings.json'
             $null = New-Item -ItemType Directory -Path (Split-Path -Parent $settings) -Force
             $profilePath = Join-Path $homePath 'profile.json'
-            Write-Json $profilePath @{ studentDataPaths=@('D:/StudentRecords'); accountLabel='업무용' }
+            $studentPath = Join-Path $homePath 'StudentRecords'
+            $null = New-Item -ItemType Directory -Path $studentPath -Force
+            Write-Json $profilePath @{ studentDataPaths=@($studentPath); accountLabel='업무용' }
             if ($case -eq 'existing') {
                 Write-Json $settings @{ custom=@{keep=$true}; permissions=@{allow=@('Read(README.md)');deny=@('Read(//private/**)');ask=@('Bash(git push *)')}; statusLine=@{padding=2;type='command';command='old-command'} }
             }
@@ -76,7 +81,8 @@ try {
                 Check ($backups.Count -eq 1 -and (Get-FileHash $backups[0].FullName).Hash -eq $before) "$name 변경 전 원본 백업"
             }
             if ($name -eq 'apply-safety') {
-                Check ($value.permissions.deny -contains 'Read(//d/StudentRecords/**)' -and $value.permissions.deny -contains 'Edit(//d/StudentRecords/**)' -and $value.permissions.ask -contains 'Bash' -and $value.permissions.ask -contains 'PowerShell') '안전 규칙 절대 경로·셸 승인'
+                $rulePath = $studentPath.Replace('\','/'); $rulePath = '//' + $rulePath.Substring(0,1).ToLowerInvariant() + $rulePath.Substring(2)
+                Check ($value.permissions.deny -contains ('Read('+$rulePath+'/**)') -and $value.permissions.deny -contains ('Edit('+$rulePath+'/**)') -and $value.permissions.ask -contains 'Bash' -and $value.permissions.ask -contains 'PowerShell') '안전 규칙 절대 경로·셸 승인'
                 Check (@($value.permissions.deny | Select-Object -Unique).Count -eq @($value.permissions.deny).Count) '안전 규칙 중복 없음'
             } else {
                 Check ($value.statusLine.type -eq 'command' -and $value.statusLine.command -match 'statusline.ps1' -and (Test-Path "$homePath/.claude/ek-workroom/statusline.ps1")) '상태줄 설정과 실행기 복사'
@@ -123,6 +129,10 @@ try {
     $bad = Run-PS "$root/bootstrap/bootstrap.ps1" @('-Source',$zip,'-ExpectedSha256',('0' * 64),'-TargetHome',$env:USERPROFILE)
     Check ($bad.Code -ne 0) 'bootstrap 해시 불일치 거부'
 
+    $extra = Run-PS "$PSScriptRoot/Test-V011.ps1" @('-RunDirectory',$run)
+    Check ($extra.Code -eq 0) 'v0.1.1 인코딩·마스킹·경로·설치격리·릴리스 회귀'
+    Write-Host $extra.Output
+
     $leaks = @()
     foreach ($file in @(Get-ChildItem "$root/plugins" -File -Recurse)) {
         $raw = [IO.File]::ReadAllText($file.FullName)
@@ -139,19 +149,7 @@ try {
         Check ($LASTEXITCODE -eq 0) ('claude plugin validate: ' + $(if ($path -eq $root) { 'marketplace' } else { 'plugin' }))
         Write-Host $validation
     }
-    # 로컬 파일 복사만, 실제 홈과 계정은 격리합니다. 프로그램 설치가 아닙니다.
-    $add = & claude plugin marketplace add $root 2>&1 | Out-String
-    $addCode = $LASTEXITCODE
-    if ($addCode -eq 0) {
-        $install = & claude plugin install 'ek-workroom@ek-workroom' 2>&1 | Out-String
-        if ($LASTEXITCODE -eq 0) {
-            $details = & claude plugin details 'ek-workroom@ek-workroom' 2>&1 | Out-String
-            if ($LASTEXITCODE -eq 0) {
-                foreach ($name in @('ek-start','ek-safety','ek-mode','ek-codex-link','ek-flow','ek-handoff')) { Check ($details -match [regex]::Escape($name)) ('설치된 스킬 목록: ' + $name) }
-                Write-Host '플러그인 로컬 설치 실측 성공 (가짜 홈)'
-            } else { Write-Host 'SKIP 설치 후 목록 조회 실패: CLI 출력은 로컬 테스트 로그에서 확인하세요.' }
-        } else { Write-Host ('SKIP 선택 플러그인 설치 실패: ' + $install) }
-    } else { Write-Host ('SKIP 선택 마켓플레이스 등록 실패: ' + $add) }
+    Write-Host 'SKIP 플러그인 설치: 이번 v0.1.1 작업의 설치 금지 지시에 따라 validate와 정적 목록만 확인했습니다.'
 } catch {
     $failures.Add('테스트 실행 예외')
     Write-Host ('FAIL 테스트 예외: ' + $_.Exception.Message)

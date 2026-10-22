@@ -23,7 +23,7 @@ try {
 } catch { Write-Output 'Tailscale: 확인 불가'; $unknown = $true }
 try {
     $processNames = @(Get-Process -ErrorAction Stop | Select-Object -ExpandProperty ProcessName)
-    foreach ($tool in @('AnyDesk','TeamViewer','RustDesk','remoting_host')) {
+    foreach ($tool in @('AnyDesk','TeamViewer','RustDesk','remoting_host','QuickAssist')) {
         $on = @($processNames | Where-Object { $_ -like ($tool + '*') }).Count -gt 0
         Write-Output ($tool + ': ' + $(if ($on) { '실행 중'; $found = $true } else { '실행 흔적 없음' }))
     }

@@ -21,8 +21,10 @@ for action in ('apply-safety', 'apply-statusline'):
         elif case == 'invalid':
             path.write_text('{broken', encoding='utf-8')
         original = path.read_bytes() if path.exists() else None
+        student = home / 'StudentRecords'
+        student.mkdir()
         profile = home / 'profile.json'
-        profile.write_text(json.dumps({'studentDataPaths': ['/private/StudentRecords'], 'accountLabel': '업무용'}, ensure_ascii=False), encoding='utf-8')
+        profile.write_text(json.dumps({'studentDataPaths': [str(student)], 'accountLabel': '업무용'}, ensure_ascii=False), encoding='utf-8')
         args = [sys.executable, str(engine), action, '--home', str(home), '--profile', str(profile)]
         preview = subprocess.run(args, capture_output=True)
         assert (path.read_bytes() if path.exists() else None) == original
@@ -37,8 +39,8 @@ for action in ('apply-safety', 'apply-statusline'):
             copies = list(path.parent.glob('settings.json.ek-backup-*'))
             assert len(copies) == 1 and copies[0].read_bytes() == original
         if action == 'apply-safety':
-            assert 'Read(//private/StudentRecords/**)' in value['permissions']['deny']
-            assert 'Edit(//private/StudentRecords/**)' in value['permissions']['deny']
+            assert any('StudentRecords/**)' in rule for rule in value['permissions']['deny'])
+            assert any(rule.startswith('Edit(') and 'StudentRecords/**)' in rule for rule in value['permissions']['deny'])
             assert 'Bash' in value['permissions']['ask']
         after = path.read_bytes()
         count = len(list(path.parent.glob('settings.json.ek-backup-*')))

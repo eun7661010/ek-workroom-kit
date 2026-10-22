@@ -48,7 +48,7 @@ foreach ($prof in @('basic', 'creator', 'dev')) {
     $runtimeInstalls = @($r.plan | Where-Object { $_.tool -in @('node','python') -and $_.action -eq 'install' })
     Check ($runtimeInstalls.Count -eq 0) "Node/Python are never installed ($prof)"
     Check (@($r.plan | Where-Object { $_.tool -eq 'claude' -and $_.kind -eq 'native' }).Count -eq 1) "Claude native installer is default ($prof)"
-    Check (@($r.plan | Where-Object { $_.tool -eq 'codex' -and $_.command -eq 'irm https://chatgpt.com/codex/install.ps1 | iex' }).Count -eq 1) "Codex official installer ($prof)"
+    Check (@($r.plan | Where-Object { $_.tool -eq 'codex' -and $_.kind -eq 'official' -and $_.command -like '*https://chatgpt.com/codex/install.ps1*' }).Count -eq 1) "Codex official installer ($prof)"
 
     # 개인정보 누출 검사
     $mdRaw = Get-Content -LiteralPath $mp -Raw -Encoding UTF8

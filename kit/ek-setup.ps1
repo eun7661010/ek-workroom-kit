@@ -11,6 +11,21 @@ param(
 $ErrorActionPreference = 'Stop'
 $isDry = -not ($Apply -and -not $DryRun)
 function Tool([string]$name) {
+    if($name -eq 'everything') {
+        # GUI 제품 Everything과 별도 CLI es를 구분하며 GUI를 실행하지 않습니다.
+        $found=Get-Command Everything.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        $candidates=@()
+        if($found) {$candidates+= $found.Source}
+        foreach($basePath in @($env:ProgramFiles,${env:ProgramFiles(x86)},$env:LOCALAPPDATA)) {
+            if($basePath) {$candidates+=(Join-Path $basePath 'Everything/Everything.exe')}
+        }
+        foreach($key in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\Everything.exe','HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths\Everything.exe')) {
+            if(Test-Path -LiteralPath $key) { $candidates+=(Get-Item -LiteralPath $key).GetValue('') }
+        }
+        $path=$candidates | Where-Object {$_ -and (Test-Path -LiteralPath $_ -PathType Leaf)} | Select-Object -First 1
+        $version=$null; if($path) { $raw=(Get-Item -LiteralPath $path).VersionInfo.FileVersion; if($raw -match '\d+\.\d+(?:\.\d+)?(?:\.\d+)?') {$version=$Matches[0]} }
+        return [ordered]@{name=$name;installed=[bool]$path;version=$version;pathHint=$null;note=$null}
+    }
     $cmd = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     $installed = [bool]$cmd
     if ($name -eq 'python' -and $cmd -and $cmd.Source -like '*\WindowsApps\*') { $installed = $false }
@@ -36,7 +51,7 @@ elseif (-not $Yes) {
     }
 }
 $tools = [ordered]@{}
-foreach ($name in @('git','node','python','code','claude','codex','gh','es','winget')) { $tools[$name] = Tool $name }
+foreach ($name in @('git','node','python','code','claude','codex','gh','es','everything','winget')) { $tools[$name] = Tool $name }
 $warnings = New-Object System.Collections.ArrayList
 foreach ($name in @('node','python')) {
     if (-not $tools[$name].installed) { $null=$warnings.Add([ordered]@{level='caution';code=($name.ToUpper()+'_MISSING');message=($name+' 없음: 이번 세팅에서는 설치하지 않습니다. 필요한 업무가 생기면 별도 안내를 받으세요.')}) }
@@ -60,14 +75,14 @@ function Step([string]$kind,[string]$target,[string]$tool,[string]$command,[bool
 }
 Step 'winget' 'Git.Git' 'git' 'winget install --id Git.Git -e --source winget --accept-package-agreements --accept-source-agreements'
 Step 'notice' 'Node.js' 'node' 'Node.js 상태만 확인합니다. 설치·업그레이드하지 않습니다.' $true
-Step 'winget' 'Microsoft.VisualStudioCode' 'code' 'winget install --id Microsoft.VisualStudioCode -e --source winget --accept-package-agreements --accept-source-agreements'
-Step 'winget' 'voidtools.Everything' 'es' 'winget install --id voidtools.Everything -e --source winget --accept-package-agreements --accept-source-agreements'
+Step 'winget' 'Microsoft.VisualStudioCode' 'code' 'winget install --id Microsoft.VisualStudioCode -e --scope user --source winget --accept-package-agreements --accept-source-agreements'
+Step 'winget' 'voidtools.Everything' 'everything' 'winget install --id voidtools.Everything -e --source winget --accept-package-agreements --accept-source-agreements'
 if ($Profile -in @('creator','dev')) { Step 'notice' 'Python' 'python' 'Python 상태만 확인합니다. 설치·업그레이드하지 않습니다.' $true }
 if ($Profile -eq 'dev') { Step 'winget' 'GitHub.cli' 'gh' 'winget install --id GitHub.cli -e --source winget --accept-package-agreements --accept-source-agreements' }
 if ($ClaudeInstaller -eq 'winget') {
     Step 'winget' 'Anthropic.ClaudeCode' 'claude' 'winget install --id Anthropic.ClaudeCode -e --source winget --accept-package-agreements --accept-source-agreements'
-} else { Step 'native' 'Claude Code' 'claude' 'irm https://claude.ai/install.ps1 | iex' }
-Step 'official' 'Codex' 'codex' 'irm https://chatgpt.com/codex/install.ps1 | iex'
+} else { Step 'native' 'Claude Code' 'claude' '공식 HTTPS 설치 파일 https://claude.ai/install.ps1 다운로드 후 별도 PowerShell에서 실행' }
+Step 'official' 'Codex' 'codex' '공식 HTTPS 설치 파일 https://chatgpt.com/codex/install.ps1 다운로드 후 별도 PowerShell에서 실행'
 $execution=New-Object System.Collections.ArrayList
 foreach ($step in $plan) {
     Write-Host ('['+$(if($isDry){'DryRun'}else{$step.action})+'] '+$step.command)
@@ -78,17 +93,32 @@ foreach ($step in $plan) {
             try {
                 if ($step.kind -eq 'winget') {
                     if (-not $tools.winget.installed) { throw 'winget이 없습니다. 앱 설치 관리자를 확인하세요.' }
-                    & winget install --id $step.target -e --source winget --accept-package-agreements --accept-source-agreements
+                    if($step.target -in @('Git.Git','voidtools.Everything')) { Write-Host '관리자 승인 창이 나오면 고객이 PC에서 직접 확인하세요. 원격 화면 공유를 잠시 멈추고, 관리자 권한이 없으면 이 항목을 보류하세요.' }
+                    $wingetArgs=@('install','--id',$step.target,'-e','--source','winget','--accept-package-agreements','--accept-source-agreements')
+                    if($step.target -eq 'Microsoft.VisualStudioCode') {$wingetArgs+=@('--scope','user')}
+                    & winget @wingetArgs
                     $code=$LASTEXITCODE
-                    if ($code -ne 0 -and $code -ne -1978335189) { throw '설치 실패' }
+                    # 공식 winget UPDATE_NOT_APPLICABLE(0x8A15002B), PACKAGE_ALREADY_INSTALLED(0x8A150061).
+                    if ($code -notin @(0,-1978335189,-1978335135)) { throw '설치 실패' }
                 } else {
                     $url='https://claude.ai/install.ps1'
                     if ($step.tool -eq 'codex') { $url='https://chatgpt.com/codex/install.ps1' }
                     # 설치 URL은 고객 입력을 받지 않는 고정된 공식 주소입니다.
-                    $installer=Invoke-RestMethod -Uri $url
-                    & ([scriptblock]::Create([string]$installer))
-                    if (-not $?) { throw '설치 실패' }
-                    $code=0
+                    $installerRoot=Join-Path ([IO.Path]::GetFullPath($TargetHome)) 'ek-workroom'
+                    $null=New-Item -ItemType Directory -Path $installerRoot -Force
+                    $installer=Join-Path $installerRoot ('.installer-'+[guid]::NewGuid().ToString('N')+'.ps1')
+                    try {
+                        Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing -TimeoutSec 60
+                        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
+                        $code=$LASTEXITCODE
+                        if($code -ne 0) {throw '설치 실패'}
+                    } finally {if(Test-Path -LiteralPath $installer) {Remove-Item -LiteralPath $installer -Force}}
+                    $pathParts=@((Join-Path $TargetHome '.local/bin'),$env:PATH,[Environment]::GetEnvironmentVariable('PATH','User'),[Environment]::GetEnvironmentVariable('PATH','Machine'))
+                    $env:PATH=(@($pathParts -split ';' | Where-Object {$_} | Select-Object -Unique) -join ';')
+                    if($step.tool -eq 'claude') {
+                        $installedCommand=Get-Command claude -CommandType Application -ErrorAction Stop | Select-Object -First 1
+                        if((Get-AuthenticodeSignature -LiteralPath $installedCommand.Source).Status -ne 'Valid') { throw '설치 서명 확인 실패' }
+                    }
                 }
                 $status='ok'
             } catch { $status='failed'; $code=1; Write-Host '설치하지 못했습니다. 판매자와 오류 화면을 확인하세요.' }

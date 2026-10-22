@@ -11,14 +11,16 @@ disable-model-invocation: true
 모든 변경은 먼저 DryRun으로 대상과 결과를 설명하고 원장 승인 뒤 적용합니다. 학생정보 폴더는 열거나 탐색하지 않습니다. 고객이 먼저 개인정보를 지운 샘플만 씁니다. 런북 밖 요청은 “세션 뒤 판매자와 상의해 주세요”로 돌립니다. 같은 오류가 3회면 멈춥니다. 결과를 확인하기 전 완료라고 말하지 않습니다.
 
 ## 단계
-`<플러그인>`은 `${CLAUDE_PLUGIN_ROOT}`가 가리키는 설치된 플러그인의 절대 경로입니다. 현재 작업 폴더 기준으로 scripts/templates를 찾지 않습니다. `<고객 홈>`과 `<프로필 JSON>`은 원장님이 지정한 로컬 절대 경로로 바꿉니다.
+`<플러그인>`은 `${CLAUDE_PLUGIN_ROOT}`가 가리키는 설치된 플러그인의 절대 경로입니다. 이 변수는 Claude가 Markdown을 읽을 때 실제 경로로 치환합니다. 치환된 절대 경로를 따옴표로 감싸며 PowerShell에서 변수 문자를 직접 평가하지 않습니다. 현재 작업 폴더 기준으로 scripts/templates를 찾지 않습니다. `<고객 홈>`과 `<프로필 JSON>`은 원장님이 지정한 로컬 절대 경로로 바꿉니다.
 
-1. 고객이 `studentDataPaths`의 보호 폴더 경로만 확인합니다. AI는 내용이나 목록을 보지 않습니다.
-2. Windows: `& "<플러그인>/scripts/apply-safety.ps1" -TargetHome "<고객 홈>" -ProfilePath "<프로필 JSON>" -DryRun`. Mac: `bash "<플러그인>/scripts/apply-safety.sh" --home "<고객 홈>" --profile "<프로필 JSON>" --dry-run`.
+1. 고객이 `studentDataPaths`의 보호 폴더 경로만 확인합니다. 스크립트는 폴더의 존재와 연결된 최종 경로 표기만 확인하며 내용이나 목록을 읽지 않습니다. 드라이브 루트와 홈 전체는 지정할 수 없습니다. 입력한 경로와 실제 경로를 모두 차단하고 Mac 한글은 NFC/NFD 두 형태를 사용합니다.
+2. Windows: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<플러그인>/scripts/apply-safety.ps1" -TargetHome "<고객 홈>" -ProfilePath "<프로필 JSON>" -DryRun`. Mac: `bash "<플러그인>/scripts/apply-safety.sh" --home "<고객 홈>" --profile "<프로필 JSON>" --dry-run`.
 3. 기존 설정 유지, Read/Edit deny, 삭제·이동·git push·외부 전송 ask, 백업 계획을 설명합니다. 잘못된 JSON이면 적용을 중지합니다. ask는 사용자의 판단을 대신하지 않습니다.
 4. 승인 뒤 동일 명령에서 `-DryRun`을 `-Apply`로, Mac은 `--apply`로 바꿉니다. AI가 JSON을 직접 편집하지 않습니다.
-5. 원장님이 보호 폴더에 개인정보 없는 `차단확인.txt`를 탐색기로 직접 준비합니다. AI는 폴더 목록을 보지 않고 이 시험 파일에만 Read/Edit를 요청합니다. 두 도구 모두 차단되어야 합니다. 실제 학생 파일로 시험하지 않습니다. 기록은 “Read 차단/미차단, Edit 차단/미차단”만 남깁니다.
+5. 적용 후 `/permissions`에서 새 deny 규칙과 `/status`의 설정 출처를 먼저 확인합니다. 반영이 안 보이면 Claude를 종료하고 다시 시작합니다. 확인 전에는 보호 폴더에 어떤 도구도 호출하지 않습니다. 원장님이 개인정보 없는 `차단확인.txt`를 직접 준비합니다. 그 파일에만 Read를 단독 요청하고, 차단 확인 후 Edit 차단을 시험합니다. Read가 허용되면 Edit를 시도하지 않고 즉시 멈춥니다. 실제 학생 파일·폴더 목록으로 시험하지 않습니다. 기록은 “Read 차단/미차단, Edit 차단/미차단”만 남깁니다.
 6. 삭제·전송은 실제로 실행하지 않고 ask 규칙과 승인 화면의 읽는 법을 확인합니다. 스크립트는 Bash/PowerShell/WebFetch/WebSearch/MCP 전체를 ask로 묶습니다. Read/Edit deny는 Claude 도구 규칙이며 OS 격리가 아닙니다. 셸을 통한 학생 폴더 읽기도 승인하면 가능하므로 거절합니다. 승인 모드를 유지하고 안전 기능 해제를 허용하지 않습니다.
+
+**학생 폴더 차단은 OS 권한 보호가 아닙니다. 셸 승인 요청에 학생 폴더 경로가 보이면 반드시 거절하세요.**
 
 ## 확인 질문
 “보호 폴더와 승인 대상이 맞나요? 기존 설정을 백업하고 안전 규칙을 합칠까요?”

@@ -11,10 +11,10 @@ disable-model-invocation: true
 모든 변경은 먼저 DryRun으로 대상과 결과를 설명하고 원장 승인 뒤 적용합니다. 학생정보 폴더는 열거나 탐색하지 않습니다. 고객이 먼저 개인정보를 지운 샘플만 씁니다. 런북 밖 요청은 “세션 뒤 판매자와 상의해 주세요”로 돌립니다. 같은 오류가 3회면 멈춥니다. 결과를 확인하기 전 완료라고 말하지 않습니다.
 
 ## 단계
-`<플러그인>`은 `${CLAUDE_PLUGIN_ROOT}`가 가리키는 설치된 플러그인의 절대 경로입니다. 현재 작업 폴더 기준으로 scripts/templates를 찾지 않습니다. `<고객 홈>`과 `<프로필 JSON>`은 원장님이 지정한 로컬 절대 경로로 바꿉니다.
+`<플러그인>`은 `${CLAUDE_PLUGIN_ROOT}`가 가리키는 설치된 플러그인의 절대 경로입니다. 이 변수는 Claude가 Markdown을 읽을 때 실제 경로로 치환합니다. 치환된 절대 경로를 따옴표로 감싸며 PowerShell에서 변수 문자를 직접 평가하지 않습니다. 현재 작업 폴더 기준으로 scripts/templates를 찾지 않습니다. `<고객 홈>`과 `<프로필 JSON>`은 원장님이 지정한 로컬 절대 경로로 바꿉니다.
 
 1. `accountLabel`은 “업무용/개인용” 수동 별칭이며 실제 로그인 검증 값이 아님을 설명합니다. 실제 계정은 고객이 `/status`에서 확인합니다.
-2. Windows: `& "<플러그인>/scripts/apply-statusline.ps1" -TargetHome "<고객 홈>" -ProfilePath "<프로필 JSON>" -DryRun`. Mac: `bash "<플러그인>/scripts/apply-statusline.sh" --home "<고객 홈>" --profile "<프로필 JSON>" --dry-run`.
+2. Windows: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<플러그인>/scripts/apply-statusline.ps1" -TargetHome "<고객 홈>" -ProfilePath "<프로필 JSON>" -DryRun`. Mac: `bash "<플러그인>/scripts/apply-statusline.sh" --home "<고객 홈>" --profile "<프로필 JSON>" --dry-run`.
 3. 기존 상태줄 교체 여부, 모델·폴더·별칭 표시, 백업 계획을 보여 줍니다. 승인 뒤 `-Apply` 또는 `--apply`로 실행합니다.
 4. 상태줄 표시를 고객 화면에서 확인합니다. Warp가 이미 있으면 메뉴에서 패널을 나눠 왼쪽 Claude/오른쪽 Codex로 둡니다. 없으면 터미널 창 두 개를 나란히 둡니다.
 5. 이미 설치된 한글 글꼴을 선택하고 “한글 확인”을 입력합니다. `/ek-workroom:korean-review` 호출로 스킬팩을 확인합니다.

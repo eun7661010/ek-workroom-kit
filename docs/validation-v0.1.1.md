@@ -1,0 +1,23 @@
+# v0.1.1 검증 기록 — 2026-10-22
+
+- 기준: HEAD 25b60ae + 판매자가 복원한 D-1 제어문자 3곳. 해당 복원 보존.
+- 원 검수 24건: 맞음 12 / 틀림 3 / 부분 9. 추가 6건: 맞음 6. 상세는 review-v0.1-response.md.
+- `claude plugin validate .`: 종료 0.
+- `claude plugin validate plugins/ek-workroom`: 종료 0. 공개 제출용 LICENSE·아이콘 경고는 기존과 동일.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File tests/run-all.ps1`: 종료 0, ALL PASSED.
+- 기존 kit 테스트: 51 PASS, 종료 0. 모든 PS 파서 오류 0, 모든 sh의 bash -n 종료 0.
+- CP949 설정/프로필 거부·원본 보존, UTF-8 BOM 병합, CP949 호스트의 상태줄 UTF-8 한글 입출력 통과.
+- 두 글자 한글 이름, 구분자별 홈 경로, 점 전화/유선/0507, IPv4/IPv6 마스킹 회귀 통과.
+- 실제 연결 폴더의 입력/최종 경로와 대소문자 표기, NFC/NFD, 루트/홈/없는 폴더 거부 통과.
+- 가짜 설치 파일 exit 0 뒤 부모 계속, exit 7 실패 전달, 프로세스 PATH 보강 통과.
+- Windows/Mac 고정 키트 배치·동버전 재실행 거부 통과. 준비 전용 API를 사용했고 설치는 없음.
+- Windows/Mac 붙여넣기 블록: 가짜 HTTPS 다운로드의 해시 일치 DryRun, 불일치 실행 전 중단 통과.
+- 릴리스 ZIP Mac 실행 파일의 CR 0건, 저장소 텍스트의 제어문자 0건. PS CRLF 검사 통과.
+- 독립 reviewer: 새 치명/중요 결함 0건, Windows 입력/실제 경로 표기 2개 반환 별도 실측.
+- 실제 Claude settings.json·Codex config.toml/auth.json/AGENTS.md의 최종 테스트 전후 SHA256 동일.
+- 실행 중인 호스트의 .claude.json은 별도 기록. 세션/로그·홈 전체 바이트 불변을 증명하는 검사는 아님.
+- 현 로컬 Codex는 0.162.1이며 login --help에서 --device-auth, exec --help에서 --skip-git-repo-check 확인.
+- 이번 작업에서는 프로그램·플러그인 설치, 실제 홈 Apply, 커밋·push·외부 발송을 실행하지 않음.
+- 범위 이탈: 초회 단독 fixture 테스트가 실제 홈의 ek-workroom에 102바이트 가짜 bootstrap.ps1 2개를 생성. 설치·설정 적용 없음. 이후 두 테스트 진입점에서 홈 격리 강제. 밖은 읽기 전용이므로 생성 파일을 삭제/수정하지 않음.
+- 남음: 실제 HTTPS 릴리스 주소 지정, Mac/OneDrive Cloud Filter 실기, 실제 설치·서명·Claude deny 집행 및 지인 PC 리허설.
+- 통합 로그: 저장소 .tmp/final-v011-tests.log. 진단/테스트 산출물은 배포 ZIP에 포함하지 않음.

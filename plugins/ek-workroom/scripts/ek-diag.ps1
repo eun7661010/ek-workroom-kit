@@ -43,22 +43,14 @@ try {
     } catch { $lines.Add('보안 SW: 확인 불가') }
     foreach ($domain in @('claude.ai','chatgpt.com')) { $lines.Add($domain + ': ' + (Test-EkNetwork $domain)) }
     $result = $lines -join [Environment]::NewLine
-    # 숫자 버전과 고정 라벨만 출력. 추가 방어로 식별정보도 치환합니다.
-    foreach ($pair in @(@($env:USERPROFILE,'<HOME>'),@($TargetHome,'<HOME>'),@($env:USERNAME,'<USER>'),@($env:COMPUTERNAME,'<COMPUTER>'))) {
-        if ($pair[0] -and $pair[0].Length -gt 2) { $result = [regex]::Replace($result,[regex]::Escape($pair[0]),$pair[1],'IgnoreCase') }
-    }
-    $result = $result -replace '[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}','<EMAIL>' -replace '01[016789][- ]?\d{3,4}[- ]?\d{4}','<PHONE>'
-    $result = [regex]::Replace($result, '(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])', {
-        param($match)
-        if (@($match.Value.Split('.') | Where-Object { [int]$_ -gt 255 }).Count -eq 0) { return '<IP>' }
-        return $match.Value
-    })
+    # 수집은 고정 라벨과 숫자로 제한합니다. 아래 치환은 추가 방어입니다.
+    $result = Sanitize-EkText $result $TargetHome
     if (-not $OutputPath) { $OutputPath = Join-Path $TargetHome 'ek-diag.txt' }
     $fullOutput = [IO.Path]::GetFullPath($OutputPath)
     $homePrefix = [IO.Path]::GetFullPath($TargetHome).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
-    if (-not $fullOutput.StartsWith($homePrefix,[StringComparison]::OrdinalIgnoreCase)) { throw '진단 저장은 지정한 홈 안에서만 가능합니다.' }
-    Assert-EkSafePath $fullOutput
+    if (-not $fullOutput.StartsWith($homePrefix,[StringComparison]::OrdinalIgnoreCase)) { Throw-EkInput '진단 저장은 지정한 홈 안에서만 가능합니다.' }
+    Assert-EkSafePath $fullOutput $TargetHome
     $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $fullOutput)
     [IO.File]::WriteAllText($fullOutput,$result,(New-Object Text.UTF8Encoding $true))
     Write-Output $result
-} catch { Write-Output '진단 실패: 저장 위치 또는 실행 권한을 확인하세요. 원본 파일은 읽지 않았습니다.'; exit 1 }
+} catch { Write-Output (Get-EkSafeError $_ '진단 실패: 저장 위치 또는 실행 권한을 확인하세요. 원본 오류는 공유하지 마세요.'); exit 1 }

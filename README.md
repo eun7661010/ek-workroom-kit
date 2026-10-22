@@ -1,4 +1,4 @@
-# 원장님 AI 작업실 원격 세팅 키트 v0.1
+# 원장님 AI 작업실 원격 세팅 키트 v0.1.1
 
 80만 원 1:1 상품의 시제품입니다. 고객 본인 Claude Code가 런북을 실행하고, 판매자는 Zoom으로 감독합니다. 판매자 AI에는 고객이 직접 읽고 붙여 넣은 마스킹 진단만 전달합니다.
 
@@ -17,6 +17,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests/run-all.ps1
 검증한 로컬 키트의 마켓플레이스를 고객 홈에 등록한 뒤 설치합니다. 아래 경로에는 압축을 푼 키트 폴더의 절대 경로를 넣습니다.
 
 ```text
-claude plugin marketplace add <키트-절대경로>
+claude plugin marketplace add "<홈>/ek-workroom/kit-0.1.1"
 claude plugin install ek-workroom@ek-workroom
 ```
+
+[v0.1.1 검수 판정표](docs/review-v0.1-response.md): 원 검수24건과 추가6건의 근거·조치를 기록했습니다. 릴리스 폴더의 paste-block-windows.txt / paste-block-mac.txt가 고객 D-1 기본 경로입니다.
