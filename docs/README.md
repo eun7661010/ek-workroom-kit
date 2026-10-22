@@ -23,7 +23,7 @@
 ## 릴리스 절차
 외부 업로드·커밋·push·설치·실제 홈 적용은 이 시제품 작업에 포함하지 않습니다.
 1. 문법·설정·진단·무누출·해시·실제 홈 불변 테스트를 통과시키고 실제 결과를 기록합니다.
-2. 로컬 ZIP만 만듭니다: `powershell -NoProfile -ExecutionPolicy Bypass -File bootstrap/make-release.ps1 -OutputDirectory .tmp/release-0.1.1 -Version 0.1.1 -ReleaseBaseUrl https://example.invalid/ek-workroom`. 출력은 새 빈 디렉터리를 사용합니다.
+2. 로컬 ZIP만 만듭니다: `powershell -NoProfile -ExecutionPolicy Bypass -File bootstrap/make-release.ps1 -OutputDirectory .tmp/release-0.1.1 -Version 0.1.1 -ReleaseBaseUrl https://github.com/eun7661010/ek-workroom-kit/releases/download`. 출력은 새 빈 디렉터리를 사용합니다.
 3. ZIP, bootstrap.ps1/sh, SHA256SUMS.txt를 확인합니다. 릴리스에 비밀값·고객 프로필 실경로가 없도록 예시만 포함합니다. ZIP과 각 bootstrap 파일의 해시는 서로 다릅니다.
 4. 고객에게 전달할 때 스크립트 파일과 ZIP 주소를 고정 버전으로 지정하고 각 SHA256을 별도 메신저 메시지 또는 Zoom으로 확인합니다. 이 작업은 외부 전달을 실행하지 않습니다.
 5. 기본 D-1은 생성된 paste-block-windows.txt 또는 paste-block-mac.txt를 메신저로 전달합니다. 기대 해시를 넣은 블록이 HTTPS 파일을 받은 뒤 자동 대조하고 일치할 때만 DryRun을 실행합니다. 직접 64자 대조는 대안입니다. bootstrap은 ZIP을 ExpectedSha256과 다시 대조한 뒤 계획을 출력합니다. 초급 고객의 Source는 make-release가 만든 ZIP을 권장합니다. 폴더 입력의 해시는 별도 FOLDER-MANIFEST/FOLDER-SHA256 규칙이므로 ZIP 해시와 바꿔 쓰지 않습니다.
@@ -55,4 +55,4 @@ run-all은 기존 kit 회귀, 모든 PS 파서와 Git Bash `bash -n`, 가짜 홈
 ## v0.1.1 검수 응답과 리허설
 [24건+추가6건 판정표](review-v0.1-response.md)를 확인하세요. `.gitattributes`가 Mac LF·Windows PS CRLF를 고정하고, run-all은 실제 ZIP의 CR과 저장소 텍스트 제어문자도 검사합니다.
 키트 배치는 `<홈>/ek-workroom/kit-0.1.1` 고정이며 동일 위치 재실행을 거부합니다. 테스트의 `-Library`/`Initialize-EkKit -Prepare`와 Mac `--prepare-only`는 설치 없이 가짜 홈의 키트 파일 배치만 시험하기 위한 API입니다. 일반 고객은 DryRun 후 승인한 Apply만 사용합니다.
-릴리스 기본 URL은 `example.invalid`이므로 실제 HTTPS 배포 주소를 정해 -ReleaseBaseUrl로 다시 생성해야 합니다. 이 작업은 업로드·외부 전달하지 않습니다.
+릴리스 기본 URL은 GitHub 공개 저장소 릴리스(`https://github.com/eun7661010/ek-workroom-kit/releases/download/<버전>/<파일>`)입니다. 릴리스 태그는 버전과 같은 이름(예: `0.1.1`)으로 만들고, 생성된 zip·bootstrap 두 파일을 그 릴리스에 올린 뒤 붙여넣기 블록을 보냅니다. 만드는 도구 자체는 업로드·외부 전달하지 않습니다.
