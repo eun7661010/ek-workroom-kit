@@ -1,0 +1,6 @@
+{
+  "name": "ek-workroom",
+  "version": "0.1.0",
+  "description": "고객 본인 Claude Code로 실행하는 승인 기반 원격 세팅 런북",
+  "author": { "name": "김은광" }
+}

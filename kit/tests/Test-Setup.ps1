@@ -12,12 +12,15 @@ function Check([bool]$cond, [string]$name) {
 if (-not (Test-Path -LiteralPath $script)) { Write-Host 'FAIL ek-setup.ps1 not found'; exit 1 }
 
 $expectedPlan = @{ basic = 6; creator = 7; dev = 8 }
-$tmpBase = Join-Path ([IO.Path]::GetTempPath()) ('ek-setup-test-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$repoRoot = Split-Path -Parent $root
+$tmpBase = Join-Path $repoRoot ('.tmp/ek-setup-test-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 
 foreach ($prof in @('basic', 'creator', 'dev')) {
     Write-Host ("=== profile: " + $prof)
     $dir = Join-Path $tmpBase $prof
-    $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -DryRun -Profile $prof -ReportDir $dir
+    $fakeHome = Join-Path $tmpBase 'home'
+    $null = New-Item -ItemType Directory -Path $fakeHome -Force
+    $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -DryRun -Profile $prof -ReportDir $dir -TargetHome $fakeHome
     $code = $LASTEXITCODE
     Check ($code -eq 0) "ek-setup exit code 0 ($prof)"
 
@@ -42,6 +45,10 @@ foreach ($prof in @('basic', 'creator', 'dev')) {
     Check (@('ok', 'caution', 'action') -contains $r.overall) "overall valid ($prof)"
     $execInstalled = @($r.execution | Where-Object { $_.status -eq 'ok' })
     Check ($execInstalled.Count -eq 0) "no real install executed in DryRun ($prof)"
+    $runtimeInstalls = @($r.plan | Where-Object { $_.tool -in @('node','python') -and $_.action -eq 'install' })
+    Check ($runtimeInstalls.Count -eq 0) "Node/Python are never installed ($prof)"
+    Check (@($r.plan | Where-Object { $_.tool -eq 'claude' -and $_.kind -eq 'native' }).Count -eq 1) "Claude native installer is default ($prof)"
+    Check (@($r.plan | Where-Object { $_.tool -eq 'codex' -and $_.command -eq 'irm https://chatgpt.com/codex/install.ps1 | iex' }).Count -eq 1) "Codex official installer ($prof)"
 
     # 개인정보 누출 검사
     $mdRaw = Get-Content -LiteralPath $mp -Raw -Encoding UTF8
@@ -53,8 +60,7 @@ foreach ($prof in @('basic', 'creator', 'dev')) {
     Check (-not $leak) "no username/profile path leak ($prof)"
 }
 
-# 정리 (임시 폴더만)
-try { Remove-Item -LiteralPath $tmpBase -Recurse -Force -ErrorAction SilentlyContinue } catch { }
+# 증거는 저장소 .tmp 안에 보존합니다. 실제 사용자 설정은 쓰지 않습니다.
 
 Write-Host ''
 if ($fail.Count -gt 0) {

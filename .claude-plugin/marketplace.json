@@ -1,0 +1,8 @@
+{
+  "name": "ek-workroom",
+  "metadata": { "description": "고객 본인 계정으로 실행하는 원장님 AI 작업실 세팅 키트" },
+  "owner": { "name": "김은광" },
+  "plugins": [
+    { "name": "ek-workroom", "source": "./plugins/ek-workroom", "description": "원장님 AI 작업실 원격 세팅 런북과 고객 업무 스킬" }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AI 작업실 고객 로컬 프로필",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "os",
+    "plans",
+    "securitySoftware",
+    "studentDataPaths",
+    "selectedSkills",
+    "workflow",
+    "accountLabel"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "0.1"
+    },
+    "os": {
+      "enum": [
+        "windows",
+        "macos"
+      ]
+    },
+    "plans": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claude",
+        "codex"
+      ],
+      "properties": {
+        "claude": {
+          "type": "string",
+          "minLength": 1
+        },
+        "codex": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "securitySoftware": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "studentDataPaths": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "description": "고객이 로컬에서 적는 차단 대상 절대 경로. 판매자 AI에 공유하지 않음."
+    },
+    "selectedSkills": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "korean-review",
+          "offline-spacing",
+          "parent-message",
+          "director-column",
+          "blog-copy",
+          "explanation-draft",
+          "question-draft",
+          "hwp-convert",
+          "worksheet-pdf",
+          "scan-cleanup",
+          "spreadsheet-check",
+          "lesson-slides"
+        ]
+      }
+    },
+    "accountLabel": {
+      "enum": [
+        "업무용",
+        "개인용"
+      ],
+      "description": "고객 수동 별칭이며 실제 로그인 계정 검증 값이 아님"
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "template"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E"
+          ]
+        },
+        "template": {
+          "enum": [
+            "A.md",
+            "B.md",
+            "C.md",
+            "D.md",
+            "E.md"
+          ]
+        }
+      }
+    }
+  }
+}

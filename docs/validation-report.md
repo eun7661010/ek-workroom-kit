@@ -1,0 +1,22 @@
+# v0.1 검증 기록 — 2026-10-22
+
+- 변경: 마켓플레이스·플러그인 0.1.0, 런북 6개, 고객 스킬 12개, Windows/Mac 실행기, 프로필·업무 A~E 시안, bootstrap, kit v0.2, 판매자 콘솔·고객 안내·검증기.
+- `claude plugin validate .`: 종료 0.
+- `claude plugin validate plugins/ek-workroom`: 종료 0. 공개 디렉터리 제출용 LICENSE·아이콘 검사 메시지는 남음. 공개 제출은 하지 않음.
+- `powershell -NoProfile -ExecutionPolicy Bypass -File tests/run-all.ps1`: 종료 0, ALL PASSED.
+- 기존 `kit/tests/Test-Setup.ps1`: 48 PASS, 종료 0.
+- 모든 `.ps1`: 파서 오류 0. 모든 `.sh`: Git Bash `bash -n` 종료 0.
+- 설정 없음/기존 설정/잘못된 JSON, 기존 키 보존, 원본 백업, 2회 멱등, 빈 보호 경로 거부 통과.
+- 진단 학생 이름·폴더명·전화·이메일·사용자명 누출 0건. IPv4 주입 반례도 마스킹 통과.
+- bootstrap PS/SH 정상 해시 DryRun 종료 0, 불일치·경로 이탈·symlink·중복 ZIP 거부 종료 1.
+- `.tmp/` 가짜 홈에서 마켓플레이스 등록·플러그인 설치·런북 6개 목록 조회 실측 성공.
+- 실제 `.claude/settings.json`과 비교 대상 Codex 파일 지문은 최종 테스트 전후 동일.
+- OS가 읽기를 막은 파일·소켓 6개는 크기·수정 시각 대조. 링크된 폴더는 따라가지 않음.
+- 기존 호스트의 `.claude.json`·Codex DB WAL/SHM 자체 갱신은 별도 SHA256 기록에 보관하고 판정에서 분리. 홈 전체 바이트 불변 조건의 완전한 증명은 아님.
+- 독립 보안 검수: 빈 보호 경로 허용 결함 수정 수용, IPv4 마스킹 반례 통과, 추가 치명 결함 미발견.
+- 공식 원문 직접 확인: plugins, plugins-reference, plugin-marketplaces, settings, statusline, setup 및 permissions.
+- 명세 보정: 절대 경로 `//c/…`, 전체 셸·웹·MCP ask, 계정은 수동 별칭. 공식 상태줄 입력에는 실제 로그인 계정 필드가 없음.
+- 남음: Windows/Mac 실기 실제 설치·설정 적용, deny 집행, 원장 단독 재실행, 모의 세션 3회. 가이드북은 Markdown 초안.
+- Mac은 기존 Python3가 없으면 설치 없이 중단. Node/Python 설치·업그레이드 없음.
+- 실제 홈 Apply·프로그램 설치·외부 발송·커밋·push는 실행하지 않음.
+- 상세 통합 로그: 저장소 `.tmp/final-test.log` (릴리스에 포함하지 않음).
