@@ -603,6 +603,51 @@ def mask_text(text, home, user=None, computer=None):
     return text
 
 
+def security_software(applications=Path('/Applications'), launch_daemons=Path('/Library/LaunchDaemons')):
+    """설치 메타데이터와 실행 파일이 함께 있는 제품만 반환합니다."""
+    import plistlib
+    from xml.parsers.expat import ExpatError
+    vendors = [('Defender', 'com.microsoft.wdav'), ('AhnLab', 'com.ahnlab'),
+               ('CrowdStrike', 'com.crowdstrike.falcon')]
+    known = set()
+    # 고정 시스템 위치의 설치 메타데이터만 읽고 경로·원문은 보고하지 않습니다.
+    for directory, pattern, bundle in ((applications, '*.app', True),
+                                       (launch_daemons, '*.plist', False)):
+        try:
+            entries = list(directory.glob(pattern))
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                metadata = entry / 'Contents/Info.plist' if bundle else entry
+                with metadata.open('rb') as stream:
+                    value = plistlib.load(stream)
+                if not isinstance(value, dict):
+                    continue
+                identifier = value.get('CFBundleIdentifier' if bundle else 'Label')
+                if not isinstance(identifier, str):
+                    continue
+                if bundle:
+                    executable = value.get('CFBundleExecutable')
+                    if not isinstance(executable, str) or not executable or Path(executable).name != executable:
+                        continue
+                    binary = entry / 'Contents/MacOS' / executable
+                else:
+                    arguments = value.get('ProgramArguments')
+                    executable = value.get('Program') or (arguments[0] if isinstance(arguments, list) and arguments else None)
+                    if not isinstance(executable, str) or not Path(executable).is_absolute():
+                        continue
+                    binary = Path(executable)
+                if not binary.is_file() or not os.access(binary, os.X_OK):
+                    continue
+                for label, prefix in vendors:
+                    if identifier == prefix or identifier.startswith(prefix + '.'):
+                        known.add(label)
+            except (OSError, ValueError, TypeError, ExpatError):
+                continue
+    return [label for label, _ in vendors if label in known]
+
+
 def diag(a):
     lines = ['보내기 전에 직접 읽어 보세요', 'AI 작업실 진단: 파일 내용·폴더 목록·계정 정보는 수집하지 않습니다.',
              '사용자 <USER> / 컴퓨터 <COMPUTER> / 홈 <HOME>',
@@ -614,11 +659,9 @@ def diag(a):
     lines += ['PATH 항목 수: ' + str(len([x for x in os.environ.get('PATH', '').split(os.pathsep) if x])),
               '디스크 여유 GB: ' + str(round(shutil.disk_usage(a.home).free / 1024**3, 1)),
               '실행 정책: Mac 해당 없음']
-    known = []
-    for label, process in [('Defender', 'wdavdaemon'), ('AhnLab', 'AhnLab'), ('CrowdStrike', 'falcond')]:
-        if command(['pgrep', '-x', process])[0] == 0:
-            known.append(label)
-    lines.append('보안 SW: ' + (', '.join(known) if known else '확인 불가 (등록한 제품만 검사)'))
+    known = security_software()
+    lines.append('보안 SW: ' + (', '.join(known) + ' (설치 흔적 확인, 실행 상태는 확인 필요)'
+                                if known else '확인 필요 (확실한 설치 근거 없음)'))
     for host in ('claude.ai', 'chatgpt.com'):
         code, _ = command(['curl', '--head', '--silent', '--max-time', '4', 'https://' + host])
         lines.append(host + ': ' + ('도달함' if code == 0 else '확인 불가'))

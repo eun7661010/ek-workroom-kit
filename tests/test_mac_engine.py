@@ -1,14 +1,20 @@
 import importlib.util
+import contextlib
+import io
 import json
+import os
 from pathlib import Path
+import plistlib
 import subprocess
 import sys
 import unicodedata
+from unittest.mock import patch
 sys.dont_write_bytecode = True
 
 root = Path(__file__).resolve().parents[1]
 engine = root / 'plugins/ek-workroom/scripts/ek_engine.py'
-run = Path(sys.argv[1]) / 'mac-engine'
+# /tmp 별칭으로 시작해도 열린 핸들 경로와 race 테스트의 비교가 일치해야 합니다.
+run = (Path(sys.argv[1]) / 'mac-engine').resolve()
 run.mkdir(parents=True, exist_ok=True)
 for action in ('apply-safety', 'apply-statusline'):
     for case in ('absent', 'existing', 'invalid'):
@@ -59,7 +65,8 @@ home.mkdir()
 (home / 'PrivateStudentFolderZZ').mkdir()
 (home / 'PrivateStudentFolderZZ/DummyStudentZZ.txt').write_text('DummyStudentZZ 010-1234-5678 dummy.student@example.test')
 from types import SimpleNamespace
-module.diag(SimpleNamespace(home=home, output=None))
+with patch.object(module, 'security_software', return_value=[]):
+    module.diag(SimpleNamespace(home=home, output=None))
 report = (home / 'ek-diag.txt').read_text(encoding='utf-8')
 for secret in ('PrivateStudentFolderZZ', 'DummyStudentZZ', '010-1234-5678', 'dummy.student@example.test', str(home)):
     assert secret not in report
@@ -68,16 +75,59 @@ empty_profile.write_text(json.dumps({'studentDataPaths': []}), encoding='utf-8')
 empty = subprocess.run([sys.executable, str(engine), 'apply-safety', '--home', str(home), '--profile', str(empty_profile)], capture_output=True)
 assert empty.returncode != 0 and not (home / '.claude/settings.json').exists()
 module.command = lambda *a, **kw: (0, '10.20.30.40')
-module.diag(SimpleNamespace(home=home, output=None))
+with patch.object(module, 'security_software', return_value=[]):
+    module.diag(SimpleNamespace(home=home, output=None))
 assert '10.20.30.40' not in (home / 'ek-diag.txt').read_text(encoding='utf-8')
+assert '보안 SW: 확인 필요' in (home / 'ek-diag.txt').read_text(encoding='utf-8')
+
+# 명령의 성공 코드·프로세스 이름만으로 설치를 판정하지 않습니다.
+applications = home / 'Applications'
+daemons = home / 'LaunchDaemons'
+applications.mkdir()
+daemons.mkdir()
+def app_fixture(name, identifier=None, executable=True):
+    app = applications / (name + '.app')
+    (app / 'Contents/MacOS').mkdir(parents=True)
+    data = {'CFBundleExecutable': 'agent'}
+    if identifier is not None:
+        data['CFBundleIdentifier'] = identifier
+    (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(data))
+    if executable:
+        binary = app / 'Contents/MacOS/agent'
+        binary.write_bytes(b'FAKE_EXECUTABLE')
+        binary.chmod(0o755)
+    return app
+
+app_fixture('Defender AhnLab CrowdStrike')
+app_fixture('Unrelated', 'com.microsoft.wdavlookalike')
+app_fixture('MissingBinary', 'com.ahnlab.v3', executable=False)
+(daemons / 'com.crowdstrike.falcon.plist').write_bytes(b'broken plist')
+(daemons / 'malformed-xml.plist').write_bytes(b'<plist><dict>')
+(daemons / 'wrong-type.plist').write_bytes(plistlib.dumps(['com.microsoft.wdav']))
+assert module.security_software(applications, daemons) == []
+app_fixture('DifferentDisplayName', 'com.microsoft.wdav')
+app_fixture('V3', 'com.ahnlab.v3')
+falcon = home / 'falcond'
+falcon.write_bytes(b'FAKE_EXECUTABLE')
+falcon.chmod(0o755)
+daemon = daemons / 'installed.plist'
+for program in ({'Program': str(falcon.resolve())}, {'ProgramArguments': [str(falcon.resolve()), '--daemon']}):
+    daemon.write_bytes(plistlib.dumps(dict(program, Label='com.crowdstrike.falcon.Agent')))
+    assert module.security_software(applications, daemons) == ['Defender', 'AhnLab', 'CrowdStrike']
+for program in ({'Program': 'falcond'}, {'Program': str(home / 'missing')},
+                {'ProgramArguments': []}, {'ProgramArguments': [42]}):
+    daemon.write_bytes(plistlib.dumps(dict(program, Label='com.crowdstrike.falcon.Agent')))
+    assert module.security_software(applications, daemons) == ['Defender', 'AhnLab']
+with patch.object(module, 'security_software', return_value=['Defender']), contextlib.redirect_stdout(io.StringIO()):
+    module.diag(SimpleNamespace(home=home, output=None))
+report = (home / 'ek-diag.txt').read_text(encoding='utf-8')
+assert '보안 SW: Defender (설치 흔적 확인, 실행 상태는 확인 필요)' in report
+assert str(applications) not in report and 'DifferentDisplayName' not in report
+print('PASS Mac 보안 SW: 프로세스 성공·이름만으로 판정 금지, 앱/launchd 식별자+실행 파일 확인')
 
 # 새 실행기는 가짜 홈·합성 문서만 다루며 실제 Claude/Codex를 실행하지 않습니다.
-import contextlib
-import io
-import os
 import re
 import zipfile
-from unittest.mock import patch
 
 assert run.resolve().is_relative_to((root / '.tmp').resolve())
 with patch.object(module.sys, 'platform', 'darwin'):
@@ -226,7 +276,7 @@ with patch.object(module.shutil, 'which', return_value='fake-codex'), patch.obje
 args, options = calls[0]
 assert args[args.index('--sandbox') + 1] == 'read-only' and args[-1] == '-'
 staged_path = Path(args[args.index('-o') + 1])
-assert staged_path.parent.parent == brief.parent and staged_path.parent.name.startswith('.ek-review-')
+assert staged_path.parent.parent.resolve() == brief.parent.resolve() and staged_path.parent.name.startswith('.ek-review-')
 assert not staged_path.parent.exists()
 assert all(token not in args for token in ('--full-auto', 'workspace-write'))
 assert [args[i + 1] for i, value in enumerate(args) if value == '-c'] == ['mcp_servers={}', 'web_search="disabled"']
@@ -676,6 +726,59 @@ assert re.fullmatch('[0-9a-f]{32}', render_url.path.split('/')[1])
 assert flags[-1].startswith('http://127.0.0.1:') and '--no-pdf-header-footer' in flags
 assert browser_calls[0][1]['timeout'] == 120
 print('PASS Mac PDF: 별도 HTTP 프로세스·난수 토큰·포트 한정 루프백 bypass·CSP·서버 종료 (실제 Mac 렌더는 현장 필요)')
+
+# /tmp -> /private/tmp처럼 홈 위의 상위 경로 전체를 연결합니다.
+# Windows에서는 관리자 권한이 필요 없는 junction으로 같은 차이를 만듭니다.
+ancestor = run / 'ancestor-alias'
+if os.name == 'nt':
+    made = subprocess.run(['cmd.exe', '/c', 'mklink', '/J', str(ancestor), str(work_home.resolve())], capture_output=True)
+    assert made.returncode == 0, made.stderr
+else:
+    ancestor.symlink_to(work_home.resolve(), target_is_directory=True)
+aliased_workspace = ancestor / 'AI작업실'
+assert aliased_workspace != workspace_dir.resolve()
+assert aliased_workspace.resolve() == workspace_dir.resolve()
+alias_profile = ancestor / 'alias-profile.json'
+alias_profile.write_text(json.dumps({'studentDataPaths': [str(ancestor / 'student')],
+                                      'workflow': {'code': 'A'}}), encoding='utf-8')
+for action in ('apply-safety', 'apply-statusline', 'apply-workspace'):
+    result = invoke(action, '--home', ancestor, '--profile', alias_profile, '--apply')
+    assert result.returncode == 0, (action, result.stderr)
+alias_rules = json.loads((ancestor / '.claude/settings.json').read_bytes())['permissions']['deny']
+assert any(str(student.resolve()).replace('\\', '/') in rule.replace('\\', '/') for rule in alias_rules)
+alias_review = SimpleNamespace(workspace=str(aliased_workspace), brief=str(aliased_workspace / '검토/brief.md'),
+                               out=str(aliased_workspace / '검토/alias-result.md'),
+                               target=[str(aliased_workspace / '결과/검토 초안.md')])
+with patch.object(module.shutil, 'which', return_value='fake-codex'), patch.object(module.subprocess, 'run', fake_codex):
+    assert module.codex_review(alias_review) == 0
+alias_staged = Path(calls[-1][0][calls[-1][0].index('-o') + 1])
+assert alias_staged.parent.parent != Path(alias_review.brief).parent
+assert alias_staged.parent.parent.resolve() == Path(alias_review.brief).parent.resolve()
+assert alias_staged.parent.name.startswith('.ek-review-') and not alias_staged.parent.exists()
+assert calls[-1][1]['input'] == options['input']
+for bad in (ancestor / 'student/private.md', aliased_workspace / '결과/student-alias/private.md'):
+    with patch.object(module.subprocess, 'run', side_effect=AssertionError('Codex 호출 금지')):
+        try:
+            module.codex_review(SimpleNamespace(**dict(vars(alias_review), target=[str(bad)],
+                                                       out=str(aliased_workspace / '검토/alias-blocked.md'))))
+            assert False, str(bad)
+        except module.SafeInputError:
+            pass
+with patch.dict(os.environ, {'EK_PDF_BROWSER': str(engine)}), patch.object(module.subprocess, 'run', fake_browser):
+    assert module.pdf(SimpleNamespace(html=str(aliased_workspace / '결과' / html.name),
+                                     pdf=str(ancestor / 'alias-render.pdf'))) == 0
+(student / 'private.html').write_text('SECRET_HTML', encoding='utf-8')
+with patch.object(module.subprocess, 'run', side_effect=AssertionError('브라우저 호출 금지')):
+    try:
+        module.pdf(SimpleNamespace(html=str(aliased_workspace / '결과/student-alias/private.html'),
+                                   pdf=str(ancestor / 'alias-blocked.pdf')))
+        assert False, '상위 연결 경로에서 보호 HTML 허용'
+    except module.SafeInputError:
+        pass
+with patch.object(module, 'security_software', return_value=[]), contextlib.redirect_stdout(io.StringIO()):
+    module.diag(SimpleNamespace(home=ancestor, output=None))
+assert (work_home / 'ek-diag.txt').is_file()
+print('PASS Mac 상위 경로 별칭: junction/symlink 홈 설정·학생 deny·작업실·Codex·PDF 허용/보호 거부·진단')
 
 # Mac 설치 함수도 가짜 공식 스크립트로 exit 격리·실패 후 Claude 보존을 확인합니다.
 import shlex
