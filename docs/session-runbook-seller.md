@@ -22,8 +22,8 @@ D-1: 고객 혼자 bootstrap 해시 확인→4단계 DryRun→항목 승인 후 
 | 버퍼 | 10분 | 165분 | 실제 초과 사유 기록 |
 
 ## 실행 순서
-고객이 작업실에서 `claude`를 엽니다. 키트 고정 위치는 bootstrap이 출력한 **그 절대 경로**이며 `/plugin marketplace add "<키트 절대 경로>"` → `/plugin install ek-workroom@ek-workroom`을 수행합니다. 신뢰 확인 창에서 버전·출처를 검수합니다. 설치와 스킬 표시를 확인한 뒤 필요하면 Claude를 재시작합니다.
-`/ek-workroom:ek-start` → `ek-safety` → `ek-mode` → `ek-codex-link` → `ek-flow` → `ek-handoff` 순서입니다. 뒤 명령도 `/ek-workroom:` 접두사를 붙입니다. 프로필·고객 홈은 로컬에서만 전달합니다. 10~30분에 ek-start에서 부트스트랩 설치 결과와 본인 로그인을 확인하고, 60~70분 ek-codex-link에서는 반복 설치 없이 교차 검토만 합니다. D-1 진단을 이미 읽었고 환경이 같으면 ek-start에서 다시 수집하지 않습니다.
+고객이 처음에는 기존 비식별 폴더에서 `claude`를 엽니다. 키트 고정 위치는 bootstrap이 출력한 **그 절대 경로**이며 `/plugin marketplace add "<키트 절대 경로>"` → `/plugin install ek-workroom@ek-workroom`을 수행합니다. 신뢰 확인 창에서 버전·출처를 검수합니다. 설치와 스킬 표시를 확인한 뒤 필요하면 Claude를 재시작합니다.
+`/ek-workroom:ek-start` → `ek-safety` → `ek-mode` → `ek-codex-link` → `ek-flow` → `ek-handoff` 순서입니다. 뒤 명령도 `/ek-workroom:` 접두사를 붙입니다. `ek-mode` 적용 뒤 생성된 작업실의 실제 절대 경로를 기록하고, 그 폴더로 이동해 Claude를 다시 연 다음 `ek-codex-link`를 실행합니다. 프로필·고객 홈은 로컬에서만 전달합니다. 10~30분에 ek-start에서 부트스트랩 설치 결과와 본인 로그인을 확인하고, 60~70분 ek-codex-link에서는 반복 설치 없이 교차 검토만 합니다. D-1 진단을 이미 읽었고 환경이 같으면 ek-start에서 다시 수집하지 않습니다.
 권한 변경은 결정적 스크립트로만 수행하며 미리보기→설명→해당 항목 승인→적용→확인의 순서를 지킵니다. **이 시제품 개발·테스트에서는 실제 홈 -Apply를 실행하지 않습니다.** 고객 세션 적용도 실제 설치 검증과 출시 승인 이후입니다.
 
 ## 안전 규칙과 한계

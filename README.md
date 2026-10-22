@@ -16,7 +16,7 @@ claude plugin marketplace add "<부트스트랩이 출력한 키트 절대 경�
 claude plugin install ek-workroom@ek-workroom
 ```
 
-진행용 6개와 고객용 10개, 총 16개 스킬을 제공합니다. `/ek-workroom:ek-start` → `ek-safety` → `ek-mode` → `ek-codex-link` → `ek-flow` → `ek-handoff` 순서로 실행하며 모두 `/ek-workroom:` 접두사를 붙입니다. 작업실 `CLAUDE.md` 첫 줄은 `@AGENTS.md`로 공통 규칙을 가져오고 Codex도 AGENTS.md를 읽습니다.
+진행용 6개와 고객용 10개, 총 16개 스킬을 제공합니다. `/ek-workroom:ek-start` → `ek-safety` → `ek-mode` → `ek-codex-link` → `ek-flow` → `ek-handoff` 순서로 실행하며 모두 `/ek-workroom:` 접두사를 붙입니다. 작업실 `CLAUDE.md` 첫 줄의 `@AGENTS.md`로 Claude가 작업실 규칙을 읽습니다. 키트의 Codex 교차 검토는 빈 임시 폴더에서 브리프·지정 대상 내용만 전달받으므로 필요한 규칙은 브리프에 명시합니다.
 
 v0.2.1은 Codex의 파일·명령·인터넷 도구와 웹 검색을 비활성화하고, 실제 경로·크기·UTF-8·하드링크 여부를 확인한 브리프와 대상 내용을 직접 전달합니다. 실행 폴더는 매번 새 빈 임시 폴더입니다. PDF는 작업실 안의 보호 경로와 겹치지 않는 HTML 폴더만 제공합니다. 임시 HTTP 서버의 난수 토큰·경로 제한·CSP와 해당 포트만 허용하는 프록시 설정으로 다른 파일과 로컬 서비스 접근을 제한합니다. 그림·로고는 HTML과 같은 폴더 또는 하위 폴더에 두고 상대 경로로 연결합니다.
 
