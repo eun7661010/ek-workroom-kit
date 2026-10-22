@@ -3,7 +3,7 @@
 param(
     [Alias('OutputDir')][string]$OutputDirectory,
     [string]$SourceDirectory,
-    [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Version='0.2.1',
+    [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Version='0.2.2',
     [ValidatePattern('^https://[A-Za-z0-9][^\s''"`]*$')][string]$ReleaseBaseUrl='https://github.com/eun7661010/ek-workroom-kit/releases/download'
 )
 $ErrorActionPreference='Stop'

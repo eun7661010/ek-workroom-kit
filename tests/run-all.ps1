@@ -138,7 +138,7 @@ try {
     Write-Host $extra.Output
 
     $newTests = Run-Python "$PSScriptRoot/test_v020.py" @($run)
-    Check ($newTests.Code -eq 0) 'v0.2.1 실행 도구·대상 경계·도구 없는 CLI 시험'
+    Check ($newTests.Code -eq 0) 'v0.2.2 실행 도구·대상 경계·도구 없는 CLI 시험'
     Write-Host $newTests.Output
     $customerTests = Run-Python "$PSScriptRoot/test_customer_skills.py" @($run)
     Check ($customerTests.Code -eq 0) '고객 스킬 10개·고정 템플릿·실제 Edge 조판 검증'
@@ -167,7 +167,7 @@ try {
         Check ($LASTEXITCODE -eq 0) ('claude plugin validate: ' + $(if ($path -eq $root) { 'marketplace' } else { 'plugin' }))
         Write-Host $validation
     }
-    Write-Host 'SKIP 플러그인 설치: 이번 v0.2.1 작업의 설치 금지 지시에 따라 validate와 정적 목록만 확인했습니다.'
+    Write-Host 'SKIP 플러그인 설치: 이번 v0.2.2 작업의 설치 금지 지시에 따라 validate와 정적 목록만 확인했습니다.'
 } catch {
     $failures.Add('테스트 실행 예외')
     Write-Host ('FAIL 테스트 예외: ' + $_.Exception.Message)

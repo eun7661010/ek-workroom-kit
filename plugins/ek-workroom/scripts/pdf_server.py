@@ -183,7 +183,9 @@ def main():
         daemon_threads = True
 
     with Server(('127.0.0.1', 0), Handler) as server:
-        (state / 'port.txt').write_text(str(server.server_port), encoding='ascii')
+        # 포트를 임시 이름으로 다 쓴 뒤 한 번에 바꿔 넣습니다. 부모가 빈 파일을 읽는 경합을 막습니다(Windows 서버와 같은 방식).
+        (state / 'port.tmp').write_text(str(server.server_port), encoding='ascii')
+        os.replace(state / 'port.tmp', state / 'port.txt')
         timer = threading.Timer(120, server.shutdown)
         timer.daemon = True
         timer.start()

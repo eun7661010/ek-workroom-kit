@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $browser = $null
 try {
-    if (-not $OutputPath) { $OutputPath = Join-Path $PSScriptRoot 'ek-workroom-guidebook-0.2.1.pdf' }
+    if (-not $OutputPath) { $OutputPath = Join-Path $PSScriptRoot 'ek-workroom-guidebook-0.2.2.pdf' }
     $output = [IO.Path]::GetFullPath($OutputPath)
     if (Test-Path -LiteralPath $output) { throw 'Output already exists; choose a new PDF name.' }
     if ([IO.Path]::GetExtension($output) -ne '.pdf') { throw 'Output must be a .pdf file.' }
