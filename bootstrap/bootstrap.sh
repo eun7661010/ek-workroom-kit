@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 먼저 메신저 붙여넣기 블록에서 이 파일의 SHA256을 확인합니다.
 set -euo pipefail
-source_value=''; expected=''; target_home="${HOME:-}"; version='0.2.0'; apply=0; dry_run=0; prepare_only=0
+source_value=''; expected=''; target_home="${HOME:-}"; version='0.2.1'; apply=0; dry_run=0; prepare_only=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --source) source_value=$2; shift 2 ;;

@@ -86,7 +86,7 @@ try {
 
     $fixture=Join-Path $work 'fixture'
     Save-Json "$fixture/.claude-plugin/marketplace.json" @{name='ek-workroom';owner=@{name='Test'};plugins=@()}
-    Save-Json "$fixture/plugins/ek-workroom/.claude-plugin/plugin.json" @{name='ek-workroom';version='0.2.0'}
+    Save-Json "$fixture/plugins/ek-workroom/.claude-plugin/plugin.json" @{name='ek-workroom';version='0.2.1'}
     $null=New-Item -ItemType Directory -Force "$fixture/plugins/ek-workroom/scripts"
     [IO.File]::WriteAllText("$fixture/plugins/ek-workroom/scripts/ek-diag.ps1","Write-Output 'FAKE_DIAG'`r`n")
     $zip=Join-Path $work 'fixture.zip'
@@ -94,18 +94,18 @@ try {
     [IO.Compression.ZipFile]::CreateFromDirectory($fixture,$zip)
     $hash=(Get-FileHash $zip).Hash
     $prepareHome=Join-Path $work 'prepare-home';$null=New-Item -ItemType Directory $prepareHome
-    $prepared=Initialize-EkKit -Source $zip -ExpectedSha256 $hash -TargetHome $prepareHome -Version '0.2.0' -Prepare
-    $expected=Join-Path $prepareHome 'ek-workroom/kit-0.2.0'
+    $prepared=Initialize-EkKit -Source $zip -ExpectedSha256 $hash -TargetHome $prepareHome -Version '0.2.1' -Prepare
+    $expected=Join-Path $prepareHome 'ek-workroom/kit-0.2.1'
     Assert ($prepared -eq $expected -and (Test-Path "$expected/plugins/ek-workroom/scripts/ek-diag.ps1")) '고정 설치 위치에 검증한 키트만 준비'
-    $already=$false;try { $null=Initialize-EkKit -Source $zip -ExpectedSha256 $hash -TargetHome $prepareHome -Version '0.2.0' -Prepare } catch {$already=$true}
+    $already=$false;try { $null=Initialize-EkKit -Source $zip -ExpectedSha256 $hash -TargetHome $prepareHome -Version '0.2.1' -Prepare } catch {$already=$true}
     Assert $already '같은 고정 위치 재실행 거부'
 
     $release=Join-Path $work 'release'
-    $built=Call-PS "$root/bootstrap/make-release.ps1" @('-OutputDirectory',$release,'-ReleaseBaseUrl','https://release.example.test/kit','-Version','0.2.0')
-    Assert ($built.Code -eq 0) 'v0.2.0 릴리스 생성'
+    $built=Call-PS "$root/bootstrap/make-release.ps1" @('-OutputDirectory',$release,'-ReleaseBaseUrl','https://release.example.test/kit','-Version','0.2.1')
+    Assert ($built.Code -eq 0) 'v0.2.1 릴리스 생성'
     foreach($name in @('paste-block-windows.txt','paste-block-mac.txt')) {
         $block=[IO.File]::ReadAllText((Join-Path $release $name))
-        Assert ($block -match '0.2.0' -and $block -match 'https://release.example.test/kit/0.2.0' -and $block -notmatch '__[A-Z_]+__' -and $block -match '[a-f0-9]{64}') "$name 버전·HTTPS·해시 채움"
+        Assert ($block -match '0.2.1' -and $block -match 'https://release.example.test/kit/0.2.1' -and $block -notmatch '__[A-Z_]+__' -and $block -match '[a-f0-9]{64}') "$name 버전·HTTPS·해시 채움"
     }
     $checks=& python "$PSScriptRoot/test_v011.py" $work $release 2>&1 | Out-String
     Assert ($LASTEXITCODE -eq 0) 'UTF-8 상태줄·Mac 경로·붙여넣기 블록·ZIP 개행·제어문자 회귀'

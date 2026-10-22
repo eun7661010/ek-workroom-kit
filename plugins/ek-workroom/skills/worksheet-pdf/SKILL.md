@@ -15,6 +15,8 @@ description: 학생용·정답용 A4 HTML 학습지를 만들고 PDF까지 변�
 2. `@page{size:A4;margin:16mm}`와 `body{font-family:'Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif;line-height:1.7;word-break:keep-all}`를 씁니다. 문항은 `break-inside:avoid`로 묶고 긴 표는 행 단위로 나눕니다. 고정 높이로 본문을 자르지 않습니다. 로컬 서체·로고만 사용합니다.
 3. 계획 승인 뒤 학생용 HTML과 정답용 HTML을 새 파일로 저장합니다. 아래 `ek-pdf`를 **각 HTML에 한 번씩** 실행해 PDF 두 개를 만듭니다. 즉석 브라우저 명령을 만들지 않습니다.
 
+그림·로고·폰트·CSS는 HTML과 같은 폴더 또는 하위 폴더에 두고 상대 경로로 연결합니다. 실행기는 그 폴더만 제공하는 임시 로컬 HTTP 서버에서 렌더하고 CSP로 스크립트와 외부 자원을 차단합니다. 숨김 파일·상위 폴더·외부 파일에 의존하지 않는 정적 HTML을 만듭니다. 이미지가 빠지면 상대 경로를 확인하며 안전 옵션을 끄지 않습니다.
+
 Windows:
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/ek-pdf.ps1" -Html "<작업실>/결과/새파일.html" -Pdf "<작업실>/결과/새파일.pdf"
@@ -23,7 +25,7 @@ Mac:
 ```sh
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/ek-pdf.sh" --html "<작업실>/결과/새파일.html" --pdf "<작업실>/결과/새파일.pdf"
 ```
-PDF가 이미 있으면 새 이름을 정합니다. 브라우저 없음 종료 코드 2이면 브라우저에서 열어 인쇄→PDF로 저장을 안내하고 PDF 미완료를 기록합니다. 설치하지 않습니다.
+PDF가 이미 있으면 새 이름을 정합니다. HTML은 `ek-mode`가 만든 작업실 안에 저장합니다. 작업실 안내와 함께 종료 코드 2가 나오면 `ek-mode`를 먼저 실행합니다. 보호 폴더와 겹치는 HTML 폴더·하드링크·숨김 파일은 사용할 수 없습니다. 브라우저 없음 안내이면 브라우저에서 열어 인쇄→PDF로 저장을 안내하고 PDF 미완료를 기록합니다. 설치하지 않습니다.
 
 ## 결과 확인
 HTML/PDF 두 벌을 열어 모든 쪽의 원문 보존·학생용 정답 노출·글자 깨짐·넘침·빈 쪽·A4 쪽수를 검사합니다. 파일 생성만으로 완료 처리하지 않습니다.

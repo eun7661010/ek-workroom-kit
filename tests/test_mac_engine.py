@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import unicodedata
 sys.dont_write_bytecode = True
 
 root = Path(__file__).resolve().parents[1]
@@ -83,6 +84,7 @@ with patch.object(module.sys, 'platform', 'darwin'):
     assert module.contains(Path('/Users/owner/학생/abc'), Path('/Users/owner/학생/ABC/child'))
     assert module.same_location(Path('/Users/Owner'), Path('/users/owner'))
     assert not module.contains(Path('/Users/owner/abc'), Path('/Users/owner/abcd'))
+    assert module.relative_inside(Path('/Users/Owner/WORK'), Path('/users/owner/work/Folder/File.md')).as_posix() == 'Folder/File.md'
 
 def invoke(action, *options, stdin=None):
     return subprocess.run([sys.executable, str(engine), action, *map(str, options)],
@@ -101,6 +103,10 @@ assert preview.returncode == 0 and not workspace_dir.exists(), preview.stderr
 created = invoke('apply-workspace', '--home', work_home, '--profile', profile)
 assert created.returncode == 0, created.stderr
 assert (workspace_dir / 'CLAUDE.md').read_text(encoding='utf-8').splitlines()[0] == '@AGENTS.md'
+protected_file = workspace_dir / '.ek-workroom/protected-paths.json'
+protected_original = protected_file.read_bytes()
+protected = json.loads(protected_original)
+assert protected['schemaVersion'] == 1 and str(student) in protected['paths']
 for name in ('입력', '결과', '원본', '검토'):
     assert (workspace_dir / name).is_dir()
 agents = workspace_dir / 'AGENTS.md'
@@ -108,6 +114,17 @@ agents.write_text('KEEP_EXISTING', encoding='utf-8')
 again = invoke('apply-workspace', '--home', work_home, '--profile', profile, '--apply')
 assert again.returncode == 0 and agents.read_text(encoding='utf-8') == 'KEEP_EXISTING'
 assert '기존 파일 유지' in again.stdout.decode('utf-8')
+another_student = work_home / 'new-student-records'
+another_student.mkdir()
+profile.write_text(json.dumps(dict(profile_data, studentDataPaths=[str(another_student)])), encoding='utf-8')
+again = invoke('apply-workspace', '--home', work_home, '--profile', profile)
+assert again.returncode == 0
+merged_paths = json.loads(protected_file.read_bytes())['paths']
+assert str(student) in merged_paths and str(another_student) in merged_paths
+backups = list(protected_file.parent.glob('*.bak-*'))
+assert len(backups) == 1 and backups[0].read_bytes() == protected_original
+again = invoke('apply-workspace', '--home', work_home, '--profile', profile)
+assert again.returncode == 0 and len(list(protected_file.parent.glob('*.bak-*'))) == 1
 for bad in (student, student / 'child', work_home, Path(work_home.anchor)):
     bad_profile = dict(profile_data, workspacePath=str(bad))
     profile.write_text(json.dumps(bad_profile), encoding='utf-8')
@@ -125,6 +142,29 @@ if os.name == 'nt':
     assert made.returncode == 0, made.stderr
 else:
     alias.symlink_to(student, target_is_directory=True)
+# 보호 목록에는 사용자가 입력한 alias와 실제 경로, NFC/NFD를 모두 보존합니다.
+unicode_student = work_home / '학생 기록'
+unicode_student.mkdir()
+variants = module.student_paths(str(unicode_student), work_home)
+assert unicodedata.normalize('NFC', str(unicode_student)) in variants
+assert unicodedata.normalize('NFD', str(unicode_student)) in variants
+alias_workspace = work_home / 'alias-workspace'
+profile.write_text(json.dumps(dict(profile_data, workspacePath=str(alias_workspace),
+                                  studentDataPaths=[str(alias)])), encoding='utf-8')
+assert invoke('apply-workspace', '--home', work_home, '--profile', profile).returncode == 0
+alias_paths = json.loads((alias_workspace / '.ek-workroom/protected-paths.json').read_bytes())['paths']
+assert str(alias) in alias_paths and str(student.resolve()) in alias_paths
+linked_workspace = work_home / 'linked-workspace'
+linked_workspace.mkdir()
+metadata_alias = linked_workspace / '.ek-workroom'
+if os.name == 'nt':
+    made = subprocess.run(['cmd.exe', '/c', 'mklink', '/J', str(metadata_alias), str(student)], capture_output=True)
+    assert made.returncode == 0, made.stderr
+else:
+    metadata_alias.symlink_to(student, target_is_directory=True)
+profile.write_text(json.dumps(dict(profile_data, workspacePath=str(linked_workspace))), encoding='utf-8')
+assert invoke('apply-workspace', '--home', work_home, '--profile', profile).returncode != 0
+assert not (student / 'protected-paths.json').exists() and not (linked_workspace / '입력').exists()
 profile.write_text(json.dumps(dict(profile_data, workspacePath=str(alias / 'child'))), encoding='utf-8')
 assert invoke('apply-workspace', '--home', work_home, '--profile', profile).returncode != 0
 for unsafe_students in ([], [str(work_home)], [str(work_home / 'missing-student')]):
@@ -172,10 +212,15 @@ brief.write_text('목표: 더미 초안만 검토', encoding='utf-8')
 review_out = workspace_dir / '검토/result.md'
 calls = []
 def fake_codex(args, **kwargs):
+    empty = Path(args[args.index('-C') + 1])
+    assert empty.is_dir() and not list(empty.iterdir())
+    assert not Path(args[args.index('-o') + 1]).is_relative_to(empty)
     calls.append((args, kwargs))
     Path(args[args.index('-o') + 1]).write_text('가짜 검토 결과', encoding='utf-8')
     return SimpleNamespace(returncode=0)
-review_args = SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out))
+target = workspace_dir / '결과/검토 초안.md'
+target.write_text('전달할 초안 내용', encoding='utf-8')
+review_args = SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out), target=[str(target)])
 with patch.object(module.shutil, 'which', return_value='fake-codex'), patch.object(module.subprocess, 'run', fake_codex):
     assert module.codex_review(review_args) == 0
 args, options = calls[0]
@@ -183,22 +228,210 @@ assert args[args.index('--sandbox') + 1] == 'read-only' and args[-1] == '-'
 staged_path = Path(args[args.index('-o') + 1])
 assert staged_path.parent.parent == brief.parent and staged_path.parent.name.startswith('.ek-review-')
 assert not staged_path.parent.exists()
-assert all(token not in args for token in ('--full-auto', '-c', 'workspace-write'))
+assert all(token not in args for token in ('--full-auto', 'workspace-write'))
+assert [args[i + 1] for i, value in enumerate(args) if value == '-c'] == ['mcp_servers={}', 'web_search="disabled"']
+assert [args[i + 1] for i, value in enumerate(args) if value == '--disable'] == module.CODEX_DISABLED_FEATURES
+empty_cwd = Path(args[args.index('-C') + 1])
+assert empty_cwd != workspace_dir and not empty_cwd.exists()
 assert not any(token.startswith('--dangerously-') for token in args)
-assert options['input'].decode('utf-8') == brief.read_text(encoding='utf-8')
+assert options['input'].decode('utf-8') == module.REVIEW_HEADER + brief.read_text(encoding='utf-8') + '\n\n=== 파일: 결과/검토 초안.md ===\n전달할 초안 내용'
+assert '도구는 없다' in options['input'].decode('utf-8')
+assert all(path not in options['input'].decode('utf-8') for path in protected['paths'])
 with patch.object(module.shutil, 'which', return_value=None):
-    assert module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out.with_name('missing.md')))) == 2
+    assert module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out.with_name('missing.md')), target=[str(target)])) == 2
 try:
     module.codex_review(review_args)
     assert False, '기존 결과 거부 누락'
 except module.SafeInputError:
     pass
 try:
-    module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(run / 'outside.md')))
+    module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(run / 'outside.md'), target=[str(target)]))
     assert False, '검토 밖 결과 거부 누락'
 except module.SafeInputError:
     pass
 print('PASS Mac codex-review: 가짜 호출·고정 read-only 인자·stdin·덮어쓰기·경계·도구 없음')
+
+# 보호 목록이 없거나 망가졌거나 브리프가 보호 경로를 언급하면 Codex에 도달하지 않습니다.
+clean_brief = brief.read_text(encoding='utf-8')
+for forbidden in (str(student).upper(), str(student).replace('\\', '/'),
+                  str(student).replace('/', '\\'), student.name.upper()):
+    brief.write_text('검토 대상: ' + forbidden, encoding='utf-8')
+    with patch.object(module.subprocess, 'run', side_effect=AssertionError('Codex 호출 금지')):
+        try:
+            module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out.with_name('protected.md')), target=[str(target)]))
+            assert False, forbidden
+        except module.SafeInputError:
+            pass
+brief.write_text(clean_brief, encoding='utf-8')
+protected_file.write_text(json.dumps({'schemaVersion': 1, 'paths': variants}, ensure_ascii=False), encoding='utf-8')
+brief.write_text(unicodedata.normalize('NFD', str(unicode_student)).upper(), encoding='utf-8')
+try:
+    module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out.with_name('unicode.md')), target=[str(target)]))
+    assert False, 'NFC/NFD 보호 경로 거부 누락'
+except module.SafeInputError:
+    pass
+brief.write_text(clean_brief, encoding='utf-8')
+for bad_metadata in ({}, {'schemaVersion': 1, 'paths': []}, {'schemaVersion': 1, 'paths': ['']},
+                     {'schemaVersion': 1, 'paths': [123]}, {'schemaVersion': 1, 'paths': ['relative']}):
+    protected_file.write_text(json.dumps(bad_metadata), encoding='utf-8')
+    with patch.object(module.subprocess, 'run', side_effect=AssertionError('Codex 호출 금지')):
+        try:
+            module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out.with_name('invalid.md')), target=[str(target)]))
+            assert False, bad_metadata
+        except module.SafeInputError:
+            pass
+protected_file.unlink()
+try:
+    with patch.object(module.subprocess, 'run', side_effect=AssertionError('Codex 호출 금지')), contextlib.redirect_stdout(io.StringIO()) as guidance:
+        assert module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out.with_name('missing-protection.md')), target=[str(target)])) == 2
+    assert '작업실 만들기(ek-mode)를 먼저 하세요' in guidance.getvalue()
+finally:
+    protected_file.write_bytes(protected_original)
+print('PASS Mac codex-review: 보호 경로 대소문자·슬래시·폴더명 거부·목록 누락 종료2·손상 fail closed·머리말')
+
+# 대상은 문자열 경로 필터가 아닌 최종 실제 파일 위치와 크기로 제한합니다.
+protected_file.write_bytes(protected_original)
+protected_target = student / 'private.md'
+protected_target.write_text('학생정보', encoding='utf-8')
+protected_alias = workspace_dir / '결과/student-alias'
+if os.name == 'nt':
+    made = subprocess.run(['cmd.exe', '/c', 'mklink', '/J', str(protected_alias), str(student)], capture_output=True)
+    assert made.returncode == 0, made.stderr
+else:
+    protected_alias.symlink_to(student, target_is_directory=True)
+hidden = workspace_dir / '.hidden'
+hidden.mkdir()
+(hidden / 'brief.md').write_text('hidden', encoding='utf-8')
+unsupported = workspace_dir / '결과/unsupported.py'
+unsupported.write_text('print(1)', encoding='utf-8')
+large = workspace_dir / '결과/large.md'
+large.write_bytes(b'x' * (200 * 1024 + 1))
+invalid_utf8 = workspace_dir / '결과/invalid.txt'
+invalid_utf8.write_bytes(b'\xff')
+for bad in (protected_target, protected_alias / 'private.md', hidden / 'brief.md', unsupported, large, invalid_utf8):
+    with patch.object(module.subprocess, 'run', side_effect=AssertionError('Codex 호출 금지')):
+        try:
+            module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out.with_name('blocked.md')), target=[str(bad)]))
+            assert False, str(bad)
+        except module.SafeInputError:
+            pass
+batch = []
+for n in range(3):
+    file = workspace_dir / '결과' / f'batch{n}.txt'
+    file.write_bytes(b'x' * (180 * 1024))
+    batch.append(str(file))
+try:
+    module.target_text(workspace_dir.resolve(), protected['paths'], batch)
+    assert False, '합계 500KB 제한 누락'
+except module.SafeInputError:
+    pass
+for spelling in ('ｓｔｕｄｅｎｔ', 's\u200btudent', 's\u034f\u180b\ufe0ftudent',
+                 str(student).replace('\\', '＼').replace('/', '／')):
+    try:
+        module.protected_brief(protected['paths'], spelling)
+        assert False, 'NFKC 또는 제로폭 검사 누락'
+    except module.SafeInputError:
+        pass
+print('PASS Mac Codex 대상: 작업실·보호 경로·junction·숨김·확장자·파일/합계 용량·UTF8·NFKC/제로폭 경계')
+
+# Brief도 Target과 동일한 열린 핸들·숨김·용량·인코딩·하드링크 검사를 통과해야 합니다.
+hard_target = workspace_dir / '결과/hardlink.md'
+os.link(target, hard_target)
+hard_brief = brief.with_name('hardlink.md')
+os.link(brief, hard_brief)
+try:
+    for raw, boundary in ((target, None), (hard_target, None), (brief, brief.parent), (hard_brief, brief.parent)):
+        try:
+            module.read_review_file(workspace_dir.resolve(), protected['paths'], str(raw), boundary)
+            assert False, '하드링크 허용'
+        except module.SafeInputError:
+            pass
+finally:
+    hard_target.unlink()
+    hard_brief.unlink()
+hidden_brief_dir = brief.parent / '.brief-hidden'
+hidden_brief_dir.mkdir()
+hidden_brief = hidden_brief_dir / 'brief.md'
+hidden_brief.write_text('brief', encoding='utf-8')
+large_brief = brief.with_name('large.md')
+large_brief.write_bytes(b'x' * (200 * 1024 + 1))
+invalid_brief = brief.with_name('invalid-utf8.md')
+invalid_brief.write_bytes(b'\xff')
+for bad in (hidden_brief, large_brief, invalid_brief):
+    with patch.object(module.subprocess, 'run', side_effect=AssertionError('Codex 호출 금지')):
+        try:
+            module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(bad), out=str(brief.with_name('invalid-result.md')), target=[str(target)]))
+            assert False, str(bad)
+        except module.SafeInputError:
+            pass
+# 실제 OS의 숨김 상위 속성도 검사합니다. 파일 자체는 visible입니다.
+attribute_folder = workspace_dir / '결과/attribute-hidden'
+attribute_folder.mkdir()
+attribute_target = attribute_folder / 'visible.md'
+attribute_target.write_text('visible', encoding='utf-8')
+if os.name == 'nt':
+    import ctypes
+    assert ctypes.windll.kernel32.SetFileAttributesW(str(attribute_folder), 2)
+    try:
+        try:
+            module.read_review_file(workspace_dir.resolve(), protected['paths'], str(attribute_target))
+            assert False, '숨김 상위 속성 허용'
+        except module.SafeInputError:
+            pass
+    finally:
+        assert ctypes.windll.kernel32.SetFileAttributesW(str(attribute_folder), 0x80)
+elif sys.platform == 'darwin':
+    import stat
+    os.chflags(attribute_folder, stat.UF_HIDDEN)
+    try:
+        try:
+            module.read_review_file(workspace_dir.resolve(), protected['paths'], str(attribute_target))
+            assert False, 'Mac 숨김 상위 속성 허용'
+        except module.SafeInputError:
+            pass
+    finally:
+        os.chflags(attribute_folder, 0)
+print('PASS Mac Codex: Brief/Target 공용 검사·하드링크·Brief UTF8/200KB/숨김·상위 폴더 속성 거부')
+
+# 검증 후 열기 직전에 디렉터리를 보호 폴더 연결로 바꿔도 열린 핸들의 실경로가 거부됩니다.
+race_folder = workspace_dir / '결과/open-race'
+race_folder.mkdir()
+race_file = race_folder / 'race.md'
+race_file.write_text('ALLOWED_BEFORE_SWAP', encoding='utf-8')
+(student / 'race.md').write_text('SECRET_AFTER_SWAP', encoding='utf-8')
+original_open = Path.open
+swapped = []
+def swap_before_open(path, *args, **kwargs):
+    if path == race_file and not swapped:
+        race_folder.rename(race_folder.with_name('open-race-original'))
+        if os.name == 'nt':
+            made = subprocess.run(['cmd.exe', '/c', 'mklink', '/J', str(race_folder), str(student)], capture_output=True)
+            assert made.returncode == 0, made.stderr
+        else:
+            race_folder.symlink_to(student, target_is_directory=True)
+        swapped.append(True)
+    return original_open(path, *args, **kwargs)
+with patch.object(Path, 'open', swap_before_open):
+    try:
+        module.target_text(workspace_dir.resolve(), protected['paths'], [str(race_file)])
+        assert False, '검증과 열기 사이 보호 폴더 교체 허용'
+    except module.SafeInputError:
+        pass
+assert swapped
+print('PASS Mac Codex 열린 핸들: 검증 직후 junction/symlink 교체로 보호 파일을 열어도 읽기 전 거부')
+
+# Mac 실행기는 인자를 subprocess 배열로 넘기므로 경로의 셸 문자를 소스로 해석하지 않습니다.
+unusual_workspace = work_home / '‘’‚‛$`;' / 'AI작업실'
+profile.write_text(json.dumps(dict(profile_data, workspacePath=str(unusual_workspace))), encoding='utf-8')
+assert invoke('apply-workspace', '--home', work_home, '--profile', profile).returncode == 0
+unusual_brief = unusual_workspace / '검토/brief.md'
+unusual_brief.write_text(clean_brief, encoding='utf-8')
+unusual_target = unusual_workspace / '결과/초안.md'
+unusual_target.write_text('특수 경로 초안', encoding='utf-8')
+with patch.object(module.shutil, 'which', return_value='fake-codex'), patch.object(module.subprocess, 'run', fake_codex):
+    assert module.codex_review(SimpleNamespace(workspace=str(unusual_workspace), brief=str(unusual_brief), out=str(unusual_brief.with_name('result.md')), target=[str(unusual_target)])) == 0
+assert calls[-1][0][calls[-1][0].index('-C') + 1] != str(unusual_workspace.resolve())
+print('PASS Mac codex-review: 둥근 따옴표·달러·백틱·세미콜론 경로를 인자 배열로 유지')
 
 # 두 호출이 모두 사전체크를 통과해도 결과 공개 시 한 호출만 새 파일을 만듭니다.
 import concurrent.futures
@@ -211,7 +444,7 @@ def fake_racing_codex(args, **kwargs):
     return SimpleNamespace(returncode=0)
 def racing_review():
     try:
-        module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(race_out)))
+        module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(race_out), target=[str(target)]))
         return 'created'
     except FileExistsError:
         return 'preserved'
@@ -224,11 +457,225 @@ assert race_out.read_text(encoding='utf-8').startswith('race-')
 assert not list(brief.parent.glob('.ek-review-*'))
 print('PASS Mac codex-review: 동시 실행 2개 중 1개만 생성·기존 결과 유지·임시 폴더 정리')
 
-html = run / '입력 문서.html'
+html = workspace_dir / '결과/입력 문서.html'
 html.write_text('<!doctype html><p>한글</p>', encoding='utf-8')
 with patch.dict(os.environ, {'EK_PDF_BROWSER': str(run / 'no-browser')}):
     assert module.pdf(SimpleNamespace(html=str(html), pdf=str(run / 'none.pdf'))) == 2
+outside_html = run / 'outside.html'
+outside_html.write_text('outside', encoding='utf-8')
+with contextlib.redirect_stdout(io.StringIO()) as guidance:
+    assert module.pdf(SimpleNamespace(html=str(outside_html), pdf=str(run / 'outside.pdf'))) == 2
+assert '작업실 안 HTML만 PDF로 만들 수 있습니다' in guidance.getvalue()
+inside_protected = workspace_dir / '결과/보호자료'
+inside_protected.mkdir()
+secret_html = inside_protected / 'secret.html'
+secret_html.write_text('secret', encoding='utf-8')
+old_metadata = protected_file.read_bytes()
+protected_file.write_text(json.dumps({'schemaVersion': 1, 'paths': [str(student), str(inside_protected)]}), encoding='utf-8')
+try:
+    for bad in (secret_html, html):
+        try:
+            module.pdf(SimpleNamespace(html=str(bad), pdf=str(run / 'blocked.pdf')))
+            assert False, '보호 경로 내부 또는 품는 서버 루트 허용'
+        except module.SafeInputError:
+            pass
+finally:
+    protected_file.write_bytes(old_metadata)
+main_hardlink = html.with_name('hard-main.html')
+os.link(html, main_hardlink)
+try:
+    try:
+        module.pdf(SimpleNamespace(html=str(main_hardlink), pdf=str(run / 'hard-main.pdf')))
+        assert False, 'HTML 하드링크 초기 거부 누락'
+    except module.SafeInputError:
+        pass
+finally:
+    main_hardlink.unlink()
+linked_main = html.parent / 'file-alias.html'
+other_html = workspace_dir / '원본/other.html'
+other_html.write_text('elsewhere in workspace', encoding='utf-8')
+try:
+    linked_main.symlink_to(other_html)
+except OSError:
+    print('SKIP Mac PDF 파일 symlink 초기 경계: 이 Windows 사용자 파일 symlink 권한 없음')
+else:
+    try:
+        try:
+            module.pdf(SimpleNamespace(html=str(linked_main), pdf=str(run / 'linked-main.pdf')))
+            assert False, '서버 루트 밖 HTML 파일 symlink 초기 거부 누락'
+        except module.SafeInputError:
+            pass
+    finally:
+        linked_main.unlink()
+print('PASS Mac PDF 입력 위치: 작업실 없음 종료2·보호 내부·보호 폴더 품는 루트 거부')
 print('PASS Mac pdf: 브라우저 없는 경우 종료 2 (Mac 실제 렌더는 현장 필요)')
+
+# 정규식 HTML 검사를 제거했으므로 서버가 파일 제공 경계를 직접 검사합니다.
+import http.client
+import time
+server_script = engine.with_name('pdf_server.py')
+server_spec = importlib.util.spec_from_file_location('pdf_server', server_script)
+server_module = importlib.util.module_from_spec(server_spec)
+server_spec.loader.exec_module(server_module)
+# Python fcntl accepts at most 1024 bytes; Darwin MAXPATHLEN is 1024.
+from pathlib import PurePosixPath
+for consumer in (module, server_module):
+    handle_calls = []
+    def fake_f_getpath(fd, operation, buffer):
+        handle_calls.append((fd, operation, len(buffer)))
+        assert operation == 50 and len(buffer) == 1024
+        return b'/Users/owner/work/file.txt\0IGNORED_PADDING'
+    with patch.object(consumer.os, 'name', 'posix'), patch.object(consumer.sys, 'platform', 'darwin'), \
+            patch.object(consumer, 'Path', PurePosixPath), \
+            patch.dict(sys.modules, {'fcntl': SimpleNamespace(fcntl=fake_f_getpath)}):
+        assert str(consumer.opened_file_path(SimpleNamespace(fileno=lambda: 7))) == '/Users/owner/work/file.txt'
+    assert handle_calls == [(7, 50, 1024)]
+print('PASS Mac F_GETPATH: 두 소비자 cmd50·1024버퍼·NUL 종료 파싱')
+assets = html.parent / 'assets'
+assets.mkdir()
+logo = assets / '학원 로고.png'
+logo.write_bytes(b'FAKE_LOGO')
+(run / '.hidden.html').write_text('secret', encoding='utf-8')
+(run / 'private.txt').write_text('secret', encoding='utf-8')
+server_token = 'a' * 32
+server_root = run / 'serve-root'
+server_root.mkdir()
+(server_root / 'visible.html').write_text('visible', encoding='utf-8')
+(server_root / '.hidden.html').write_text('hidden', encoding='utf-8')
+(server_root / 'private.txt').write_text('private', encoding='utf-8')
+secret_folder = run / 'outside-server'
+secret_folder.mkdir()
+(secret_folder / 'secret.png').write_bytes(b'SECRET_OUTSIDE')
+server_race = server_root / 'open-race'
+server_race.mkdir()
+server_race_file = server_race / 'secret.png'
+server_race_file.write_bytes(b'ALLOWED_BEFORE_SWAP')
+server_swapped = []
+def swap_resource_before_open(path, *args, **kwargs):
+    if path == server_race_file and not server_swapped:
+        server_race.rename(server_race.with_name('open-race-original'))
+        if os.name == 'nt':
+            made = subprocess.run(['cmd.exe', '/c', 'mklink', '/J', str(server_race), str(secret_folder)], capture_output=True)
+            assert made.returncode == 0, made.stderr
+        else:
+            server_race.symlink_to(secret_folder, target_is_directory=True)
+        server_swapped.append(True)
+    return original_open(path, *args, **kwargs)
+with patch.object(Path, 'open', swap_resource_before_open):
+    assert server_module.read_resource(server_root.resolve(), '/' + server_token + '/open-race/secret.png', server_token) is None
+assert server_swapped
+assert server_module.read_resource(server_root.resolve(), '/' + server_token + '/visible.html', server_token)[1] == b'visible'
+print('PASS Mac PDF 열린 핸들: 검증 직후 junction/symlink 외부 교체 시 내용 미반환')
+hard_resource = server_root / 'hard.html'
+os.link(server_root / 'visible.html', hard_resource)
+try:
+    assert server_module.read_resource(server_root.resolve(), '/' + server_token + '/visible.html', server_token) is None
+    assert server_module.read_resource(server_root.resolve(), '/' + server_token + '/hard.html', server_token) is None
+finally:
+    hard_resource.unlink()
+assert server_module.read_resource(server_root.resolve(), '/visible.html', server_token) is None
+assert server_module.read_resource(server_root.resolve(), '/' + 'b' * 32 + '/visible.html', server_token) is None
+assert server_module.read_resource(server_root.resolve(), '/' + server_token + '/visible.html:secret', server_token) is None
+print('PASS Mac PDF 서버: 열린 핸들 하드링크·누락/틀린 난수 토큰·ADS 거부')
+server_alias = server_root / 'alias'
+if os.name == 'nt':
+    made = subprocess.run(['cmd.exe', '/c', 'mklink', '/J', str(server_alias), str(secret_folder)], capture_output=True)
+    assert made.returncode == 0, made.stderr
+else:
+    server_alias.symlink_to(secret_folder, target_is_directory=True)
+attribute_server_dir = server_root / 'attribute-hidden'
+attribute_server_dir.mkdir()
+(attribute_server_dir / 'visible.png').write_bytes(b'HIDDEN_PARENT')
+if os.name == 'nt':
+    assert ctypes.windll.kernel32.SetFileAttributesW(str(attribute_server_dir), 2)
+    try:
+        assert server_module.read_resource(server_root.resolve(), '/' + server_token + '/attribute-hidden/visible.png', server_token) is None
+    finally:
+        assert ctypes.windll.kernel32.SetFileAttributesW(str(attribute_server_dir), 0x80)
+elif sys.platform == 'darwin':
+    os.chflags(attribute_server_dir, stat.UF_HIDDEN)
+    try:
+        assert server_module.read_resource(server_root.resolve(), '/' + server_token + '/attribute-hidden/visible.png', server_token) is None
+    finally:
+        os.chflags(attribute_server_dir, 0)
+# Mac UF_HIDDEN is checked independently of dot names and Windows attributes.
+real_stat = Path.stat
+def mac_hidden_info(path, *args, **kwargs):
+    info = real_stat(path, *args, **kwargs)
+    if path == attribute_server_dir:
+        return SimpleNamespace(st_flags=0x8000, st_file_attributes=0)
+    return info
+with patch.object(Path, 'stat', mac_hidden_info):
+    assert server_module.hidden_path(attribute_server_dir / 'visible.png', server_root.resolve())
+    assert module.hidden_path(attribute_server_dir / 'visible.png', server_root.resolve())
+print('PASS Mac PDF/Codex 숨김 검사: 상위 폴더 OS 속성·UF_HIDDEN 비점 이름 거부')
+state = run / 'server-state'
+state.mkdir()
+audit = state / 'audit.jsonl'
+server_env = dict(os.environ, EK_PDF_ROOT=str(server_root), EK_PDF_STATE_DIR=str(state), EK_PDF_AUDIT_LOG=str(audit), EK_PDF_TOKEN=server_token)
+server = subprocess.Popen([sys.executable, '-B', str(server_script)], env=server_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+try:
+    deadline = time.monotonic() + 10
+    while not (state / 'port.txt').exists():
+        assert server.poll() is None and time.monotonic() < deadline
+        time.sleep(.02)
+    port = int((state / 'port.txt').read_text(encoding='ascii'))
+    for path in ('/../outside-server/secret.png', '/%2e%2e/outside-server/secret.png',
+                 '/folder\\secret.png', '//outside-server/secret.png', '/C:/secret.png',
+                 '/alias/secret.png', '/.hidden.html', '/private.txt'):
+        client = http.client.HTTPConnection('127.0.0.1', port)
+        client.request('GET', '/' + server_token + path)
+        response = client.getresponse()
+        assert response.status == 404, (path, response.status)
+        assert b'SECRET_OUTSIDE' not in response.read()
+        client.close()
+    for path in ('/visible.html', '/' + 'b' * 32 + '/visible.html', '/' + server_token + '/visible.html%3Asecret'):
+        client = http.client.HTTPConnection('127.0.0.1', port)
+        client.request('GET', path)
+        response = client.getresponse()
+        assert response.status == 404
+        response.read()
+        client.close()
+    client = http.client.HTTPConnection('127.0.0.1', port)
+    client.request('POST', '/' + server_token + '/visible.html')
+    assert client.getresponse().status == 404
+    client.close()
+    client = http.client.HTTPConnection('127.0.0.1', port)
+    client.request('GET', '/' + server_token + '/visible.html')
+    response = client.getresponse()
+    assert response.status == 200 and response.read() == b'visible'
+    assert response.getheader('Content-Security-Policy') == server_module.CSP
+    client.close()
+finally:
+    server.terminate()
+    server.wait(timeout=10)
+rows = [json.loads(row) for row in audit.read_text(encoding='utf-8').splitlines()]
+assert all(row['path'] is None for row in rows if row['status'] == 404)
+assert sum(row['status'] == 200 for row in rows) == 1
+print('PASS Mac PDF 서버: traversal·percent·역슬래시·절대 경로·junction·숨김·확장자·GET 한정 404, 루트 파일만 제공')
+
+html.write_text('<link rel="stylesheet" href="assets/style.css"><img src="assets/학원 로고.png">', encoding='utf-8')
+browser_calls = []
+def fake_browser(args, **kwargs):
+    browser_calls.append((args, kwargs))
+    from urllib.request import urlopen
+    assert urlopen(args[-1]).read() == html.read_bytes()
+    target = next(value.split('=', 1)[1] for value in args if value.startswith('--print-to-pdf='))
+    Path(target).write_bytes(b'%PDF-1.4\n/Type /Page\n/Type /Page\n')
+    return SimpleNamespace(returncode=0)
+with patch.dict(os.environ, {'EK_PDF_BROWSER': str(engine)}), patch.object(module.subprocess, 'run', fake_browser):
+    assert module.pdf(SimpleNamespace(html=str(html), pdf=str(run / 'relative-logo.pdf'))) == 0
+flags = browser_calls[0][0]
+assert all(flag in flags for flag in ('--proxy-server=127.0.0.1:9',
+                                     '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1',
+                                     '--disable-background-networking', '--disable-extensions'))
+from urllib.parse import urlsplit
+render_url = urlsplit(flags[-1])
+assert '--proxy-bypass-list=<-loopback>;127.0.0.1:' + str(render_url.port) in flags
+assert re.fullmatch('[0-9a-f]{32}', render_url.path.split('/')[1])
+assert flags[-1].startswith('http://127.0.0.1:') and '--no-pdf-header-footer' in flags
+assert browser_calls[0][1]['timeout'] == 120
+print('PASS Mac PDF: 별도 HTTP 프로세스·난수 토큰·포트 한정 루프백 bypass·CSP·서버 종료 (실제 Mac 렌더는 현장 필요)')
 
 # Mac 설치 함수도 가짜 공식 스크립트로 exit 격리·실패 후 Claude 보존을 확인합니다.
 import shlex

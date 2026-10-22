@@ -1,4 +1,4 @@
-"""v0.2.0 실행 도구 시험. 설치/실제 AI 호출 없이 저장소 .tmp에서만 쓴다."""
+"""v0.2.1 실행 도구 시험. 설치/실제 AI 호출 없이 저장소 .tmp에서만 쓴다."""
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
@@ -31,6 +31,8 @@ def execute(args, *, input=None, extra=None, timeout=140):
 
 
 def tool(name, *args, **kwargs):
+    if name == 'ek-codex-review' and '-Target' not in args:
+        args += ('-Target', target)
     return execute(ps + ['-File', str(scripts / (name + '.ps1'))] + [str(a) for a in args], **kwargs)
 
 
@@ -59,12 +61,24 @@ created = tool('apply-workspace', '-TargetHome', home, '-ProfilePath', profile)
 check(created.returncode == 0 and all((workspace / p).is_dir() for p in ('입력', '결과', '원본', '검토')),
       'workspace 기본 실행 생성', created)
 check((workspace / 'CLAUDE.md').read_text(encoding='utf-8-sig').splitlines()[0] == '@AGENTS.md', 'workspace CLAUDE import 첫 줄')
+protection = workspace / '.ek-workroom/protected-paths.json'
+check(json.loads(protection.read_text(encoding='utf-8')) == {'schemaVersion': 1, 'paths': [str(student)]}, 'workspace 학생 보호 경로 목록 생성')
 before = {p.relative_to(workspace): p.read_bytes() for p in workspace.rglob('*') if p.is_file()}
 (workspace / '내-업무-실행법.md').write_text('고객 수정 유지', encoding='utf-8')
 before[Path('내-업무-실행법.md')] = (workspace / '내-업무-실행법.md').read_bytes()
 again = tool('apply-workspace', '-TargetHome', home, '-ProfilePath', profile, '-Apply')
 check(again.returncode == 0 and '기존 파일 유지' in again.stdout.decode('utf-8') and
       all((workspace / p).read_bytes() == raw for p, raw in before.items()), 'workspace 재실행 기존 파일 유지', again)
+other_student = home / 'StudentRecords'
+other_student.mkdir()
+write_json(profile, dict(data, studentDataPaths=[str(other_student)]))
+changed_profile = tool('apply-workspace', '-TargetHome', home, '-ProfilePath', profile)
+backups = list(protection.parent.glob('protected-paths.json.bak-*'))
+check(changed_profile.returncode == 0 and set(json.loads(protection.read_text(encoding='utf-8'))['paths']) == {str(student), str(other_student)} and
+      len(backups) == 1 and backups[0].read_bytes() == before[Path('.ek-workroom/protected-paths.json')], 'workspace 보호 목록 합집합·기존 원본 백업', changed_profile)
+merged = protection.read_bytes()
+again = tool('apply-workspace', '-TargetHome', home, '-ProfilePath', profile)
+check(again.returncode == 0 and protection.read_bytes() == merged and len(list(protection.parent.glob('*.bak-*'))) == 1, 'workspace 같은 보호 목록 재실행 추가 백업 없음', again)
 
 
 def reject_workspace(path, label):
@@ -92,32 +106,12 @@ write_json(profile, dict(data, studentDataPaths=[str(alias / '아래')], workspa
 (student / '아래').mkdir()
 r = tool('apply-workspace', '-TargetHome', home, '-ProfilePath', profile, '-DryRun')
 check(r.returncode != 0, 'workspace 학생 alias 반대 포함관계 거부', r)
+alias_workspace = home / 'AliasWork'
+write_json(profile, dict(data, studentDataPaths=[str(alias)], workspacePath=str(alias_workspace)))
+r = tool('apply-workspace', '-TargetHome', home, '-ProfilePath', profile)
+check(r.returncode == 0 and set(json.loads((alias_workspace / '.ek-workroom/protected-paths.json').read_text(encoding='utf-8'))['paths']) == {str(alias), str(student)}, 'workspace 학생 입력·실제 junction 경로 함께 보관', r)
 
-# 한글·공백 로컬 파일을 실제 Edge로 렌더한다. 기존 브라우저 프로필은 사용하지 않는다.
-pdf_dir = run / '한글 공백 PDF'
-pdf_dir.mkdir()
-html, pdf = pdf_dir / '시험 자료.html', pdf_dir / '시험 결과.pdf'
-html.write_text('''<!doctype html><meta charset="utf-8"><style>
-@page{size:A4;margin:20mm}body{font-family:Arial,sans-serif}section{break-after:page}
-section:last-child{break-after:auto}</style><section><h1>한글 첫째 쪽</h1><p>학원 시험 자료</p></section>
-<section><h1>한글 둘째 쪽</h1><p>답안 확인</p></section>''', encoding='utf-8')
-edge = next((Path(os.environ[k]) / 'Microsoft/Edge/Application/msedge.exe' for k in ('ProgramFiles(x86)', 'ProgramFiles', 'LOCALAPPDATA')
-             if k in os.environ and (Path(os.environ[k]) / 'Microsoft/Edge/Application/msedge.exe').is_file()), None)
-if edge:
-    start = time.monotonic()
-    rendered = tool('ek-pdf', '-Html', html, '-Pdf', pdf, extra={'EK_PDF_BROWSER': str(edge)})
-    check(rendered.returncode == 0 and pdf.is_file() and len(re.findall(rb'/Type\s*/Page\b', pdf.read_bytes())) == 2,
-          f'Edge 실제 PDF 2쪽 (한글·공백 경로, {time.monotonic()-start:.1f}초)', rendered)
-    original = pdf.read_bytes()
-    refused = tool('ek-pdf', '-Html', html, '-Pdf', pdf)
-    check(refused.returncode != 0 and pdf.read_bytes() == original, 'PDF 기존 출력 덮어쓰기 거부', refused)
-    check(not list(Path(env['TEMP']).glob('ek-pdf-*')), 'PDF 임시 브라우저 프로필 정리')
-else:
-    print('SKIP Edge 없음: 실제 PDF 렌더')
-    pdf.write_bytes(b'original')
-    check(tool('ek-pdf', '-Html', html, '-Pdf', pdf).returncode != 0, 'PDF 기존 출력 덮어쓰기 거부')
-missing = tool('ek-pdf', '-Html', html, '-Pdf', pdf_dir / '없는 브라우저.pdf', extra={'EK_PDF_BROWSER': str(run / 'missing.exe')})
-check(missing.returncode == 2 and '인쇄→PDF로 저장' in missing.stdout.decode('utf-8'), 'PDF 브라우저 없음 종료 2', missing)
+# 실제 Edge/HTTP 격리 시험은 test_pdf_isolation.py에서 실행합니다.
 
 hwpx, out = run / '합성.hwpx', run / '합성.txt'
 ns = 'http://www.hancom.co.kr/hwpml/2011/paragraph'
@@ -147,6 +141,9 @@ record, prompt_record = run / 'codex-args.json', run / 'codex-stdin.txt'
 stub = fakebin / 'fake-codex.py'
 stub.write_text('''import json, os, sys, time
 from pathlib import Path
+cwd=Path(sys.argv[sys.argv.index('-C')+1])
+assert cwd.is_dir() and not list(cwd.iterdir()), 'CWD_NOT_EMPTY'
+assert not Path(sys.argv[sys.argv.index('-o')+1]).is_relative_to(cwd), 'OUTPUT_IN_CWD'
 Path(os.environ['EK_FAKE_ARGS']).write_text(json.dumps(sys.argv[1:]), encoding='utf-8')
 Path(os.environ['EK_FAKE_STDIN']).write_bytes(sys.stdin.buffer.read())
 code = int(os.environ.get('EK_FAKE_EXIT', '0'))
@@ -164,12 +161,166 @@ Path(sys.argv[sys.argv.index('-o')+1]).write_text(os.environ.get('EK_FAKE_TEXT',
 fakeenv = {'PATH': str(fakebin)+os.pathsep+env['PATH'], 'EK_FAKE_ARGS': str(record), 'EK_FAKE_STDIN': str(prompt_record)}
 brief, review_out = workspace / '검토/검토 요청.md', workspace / '검토/검토 결과.md'
 brief.write_text('목표: 더미 문서 검토\n금지: 학생정보·비밀값\n', encoding='utf-8')
+target = workspace / '결과/더미 초안.md'
+target.write_text('학교 안내문 더미 내용', encoding='utf-8-sig')
+header = '아래 파일 내용만 근거로 검토한다. 도구는 없다. 결과는 답변 텍스트로만.\n\n'
+def expected_prompt(brief_path=brief):
+    return header + brief_path.read_text(encoding='utf-8-sig') + '\n\n=== 파일: 결과/더미 초안.md ===\n학교 안내문 더미 내용'
+disabled = 'shell_tool unified_exec browser_use browser_use_external browser_use_full_cdp_access in_app_browser computer_use apps plugins remote_plugin multi_agent view_image code_mode_host memories hooks workspace_dependencies skill_mcp_dependency_install'.split()
 result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, '-Out', review_out, extra=fakeenv)
 check(result.returncode == 0 and review_out.exists() and record.exists(), 'Codex 가짜 CLI 실행 성공', result)
 arguments = json.loads(record.read_text(encoding='utf-8-sig'))
-check(arguments[:10] == ['exec', '--sandbox', 'read-only', '--skip-git-repo-check', '--ephemeral', '--color', 'never', '-C', str(workspace), '-o'] and
-      Path(arguments[10]).parent.parent == workspace / '검토' and arguments[11:] == ['-'] and
-      prompt_record.read_text(encoding='utf-8-sig').strip() == brief.read_text(encoding='utf-8-sig').strip(), 'Codex read-only 고정 인자·위험 옵션 0·한국어 stdin')
+check(arguments[:8] == ['exec', '--sandbox', 'read-only', '--skip-git-repo-check', '--ephemeral', '--color', 'never', '-C'] and
+      not Path(arguments[8]).is_relative_to(workspace) and not Path(arguments[8]).exists() and
+      arguments[9:-7] == [item for feature in disabled for item in ('--disable', feature)] and
+      arguments[-7:-2] == ['-c', 'mcp_servers={}', '-c', 'web_search=disabled', '-o'] and arguments[-1] == '-' and
+      Path(arguments[-2]).parent.parent == workspace / '검토' and
+      prompt_record.read_text(encoding='utf-8-sig').strip() == expected_prompt().strip(),
+      'Codex 17개 도구 비활성·MCP 비움·웹 검색 끔·빈 임시 CWD·대상 내용 전달·임시 정리')
+record_before = record.read_bytes()
+for index, protected_text in enumerate((str(student).upper().replace('\\', '/'), student.name,
+                                        str(other_student).upper().replace('\\', '/'), other_student.name.upper(),
+                                        'ＳｔｕｄｅｎｔＲｅｃｏｒｄｓ', 'Student\u200bRecords')):
+    # 대소문자 변형도 실제 검사되도록 영문 보호 경로를 테스트 목록에 추가합니다.
+    write_json(protection, {'schemaVersion': 1, 'paths': [str(student), str(other_student)]})
+    unsafe_brief = brief.with_name(f'protected-{index}.md')
+    unsafe_brief.write_text('검토 대상: ' + protected_text, encoding='utf-8')
+    result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', unsafe_brief, '-Out', brief.with_name(f'blocked-{index}.md'), extra=fakeenv)
+    check(result.returncode == 1 and record.read_bytes() == record_before and
+          '보호 대상 폴더' in result.stdout.decode('utf-8-sig') and str(home) not in result.stdout.decode('utf-8-sig'),
+          f'Codex 보호 경로 변형·폴더명 {index+1} 실행 전 거부', result)
+saved_protection = protection.read_bytes()
+protection.unlink()
+result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, '-Out', brief.with_name('no-protection.md'), extra=fakeenv)
+check(result.returncode == 2 and result.stdout.decode('utf-8-sig').strip() == '작업실 만들기(ek-mode)를 먼저 하세요' and record.read_bytes() == record_before, 'Codex 보호 목록 없음 종료 2·실행 없음', result)
+protection.write_bytes(saved_protection)
+for malformed in ({'schemaVersion': 1, 'paths': []}, {'schemaVersion': 1, 'paths': ['relative']}):
+    write_json(protection, malformed)
+    result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, '-Out', brief.with_name('invalid-protection.md'), extra=fakeenv)
+    check(result.returncode == 1 and record.read_bytes() == record_before, 'Codex 손상된 보호 목록 거부', result)
+protection.write_bytes(saved_protection)
+missing_target = execute(ps + ['-File', str(scripts / 'ek-codex-review.ps1'), '-Workspace', str(workspace), '-Brief', str(brief), '-Out', str(brief.with_name('no-target.md'))], extra=fakeenv)
+check(missing_target.returncode == 1, 'Codex 대상 최소 1개 필수', missing_target)
+outside_target = run / 'outside.txt'
+outside_target.write_text('OUTSIDE_SECRET', encoding='utf-8')
+inside_protected = workspace / 'PrivateRecords'
+inside_protected.mkdir()
+private_target = inside_protected / 'secret.txt'
+private_target.write_text('PROTECTED_SECRET', encoding='utf-8')
+write_json(protection, {'schemaVersion': 1, 'paths': [str(student), str(other_student), str(inside_protected)]})
+target_alias = workspace / '입력/별칭'
+r = execute(ps + ['-Command', 'New-Item -ItemType Junction -Path '+q(target_alias)+' -Target '+q(inside_protected)+' | Out-Null'])
+check(r.returncode == 0, 'Codex 보호 대상 junction 준비', r)
+hidden_target = workspace / '.hidden/secret.txt'
+hidden_target.parent.mkdir()
+hidden_target.write_text('HIDDEN_SECRET', encoding='utf-8')
+binary_target = workspace / '결과/disallowed.json'
+binary_target.write_text('{}', encoding='utf-8')
+oversized_target = workspace / '결과/large.txt'
+oversized_target.write_bytes(b'x' * (200 * 1024 + 1))
+invalid_utf8 = workspace / '결과/non-utf8.txt'
+invalid_utf8.write_bytes(b'\xff\xfeh\0i\0')
+cases = [(outside_target, '작업실 밖'), (private_target, '작업실 내부 보호 폴더'),
+         (target_alias / 'secret.txt', '보호 폴더 junction'), (hidden_target, '숨김 폴더'),
+         (protection, '보호 목록 숨김 경로'), (binary_target, '비허용 확장자'),
+         (oversized_target, '파일당 200KB'), (invalid_utf8, 'UTF-16 BOM 거부')]
+for index, (candidate, label) in enumerate(cases):
+    result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, '-Target', candidate, '-Out', brief.with_name(f'target-blocked-{index}.md'), extra=fakeenv)
+    check(result.returncode == 1 and record.read_bytes() == record_before and str(home) not in result.stdout.decode('utf-8-sig'), 'Codex 대상 '+label+' 거부·CLI 실행 없음', result)
+# 열린 핸들의 하드링크 개수와 파일·상위 폴더 숨김 속성을 검사합니다.
+import ctypes
+hard_target = workspace / '결과/hard-target.txt'
+r = execute(ps + ['-Command', 'New-Item -ItemType HardLink -Path '+q(hard_target)+' -Target '+q(outside_target)+' | Out-Null'])
+check(r.returncode == 0 and hard_target.stat().st_nlink >= 2, 'Codex 같은 볼륨 하드링크 준비', r)
+hidden_parent = workspace / '결과/ordinary-parent'
+hidden_parent.mkdir()
+parent_target = hidden_parent / 'target.txt'
+parent_target.write_text('HIDDEN_PARENT_SECRET', encoding='utf-8')
+assert ctypes.windll.kernel32.SetFileAttributesW(str(hidden_parent), 2)
+for candidate, label in [(hard_target, '하드링크'), (parent_target, '숨김 속성 상위 폴더')]:
+    result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, '-Target', candidate,
+                  '-Out', brief.with_name('blocked-'+label+'.md'), extra=fakeenv)
+    check(result.returncode == 1 and record.read_bytes() == record_before, 'Codex 대상 '+label+' 거부', result)
+brief_hidden_parent = workspace / '검토/ordinary-parent'
+brief_hidden_parent.mkdir()
+brief_parent = brief_hidden_parent / 'brief.md'
+brief_parent.write_text('더미 검토', encoding='utf-8')
+assert ctypes.windll.kernel32.SetFileAttributesW(str(brief_hidden_parent), 2)
+brief_hard = brief.with_name('hard-brief.md')
+os.link(outside_target, brief_hard)
+brief_hidden = brief.with_name('hidden-brief.md')
+brief_hidden.write_text('더미 검토', encoding='utf-8')
+assert ctypes.windll.kernel32.SetFileAttributesW(str(brief_hidden), 2)
+brief_large = brief.with_name('large-brief.md')
+brief_large.write_bytes(b'x' * (200 * 1024 + 1))
+brief_invalid = brief.with_name('utf16-brief.md')
+brief_invalid.write_bytes(b'\xff\xfeh\0i\0')
+for index, (candidate, label) in enumerate([(brief_hard, '하드링크'), (brief_hidden, '숨김 파일'),
+        (brief_parent, '숨김 상위 폴더'), (brief_large, '200KB 초과'), (brief_invalid, 'UTF-16 BOM')]):
+    result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', candidate,
+                  '-Out', brief.with_name(f'brief-rejected-{index}.md'), extra=fakeenv)
+    check(result.returncode == 1 and record.read_bytes() == record_before, 'Codex 브리프 '+label+' 거부·CLI 실행 없음', result)
+# 작업실 루트 자체가 숨김이면 정상 이름의 파일도 거부합니다.
+assert ctypes.windll.kernel32.SetFileAttributesW(str(workspace), 2)
+try:
+    result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, '-Target', target,
+                  '-Out', brief.with_name('hidden-workspace.md'), extra=fakeenv)
+    check(result.returncode == 1 and record.read_bytes() == record_before, 'Codex 숨김 작업실 루트 거부', result)
+finally:
+    assert ctypes.windll.kernel32.SetFileAttributesW(str(workspace), 16)
+brief_bom = brief.with_name('utf8-bom.md')
+brief_bom.write_text('더미 UTF-8 BOM 검토', encoding='utf-8-sig')
+result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief_bom, '-Target', target,
+              '-Out', brief.with_name('brief-bom-result.md'), extra=fakeenv)
+check(result.returncode == 0 and prompt_record.read_text(encoding='utf-8-sig').startswith(header+'더미 UTF-8 BOM 검토'), 'Codex 브리프 UTF-8 BOM 허용', result)
+record_before = record.read_bytes()
+
+# Deterministically replace a previously checked directory just before opening its file.
+# The consumer must validate the opened handle, not reopen a trusted path name blindly.
+race_dir = workspace / 'read-race'
+race_dir.mkdir()
+race_target = race_dir / 'secret.txt'
+race_target.write_text('SAFE_CONTENT', encoding='utf-8')
+race_runner = run / 'read-race.ps1'
+race_runner.write_text('''function Get-Item {
+    param([string]$LiteralPath, [switch]$Force)
+    $item = Microsoft.PowerShell.Management\\Get-Item -LiteralPath $LiteralPath -Force:$Force
+    if ($LiteralPath -eq $env:EK_RACE_TARGET -and -not $script:changed) {
+        $script:changed = $true
+        [IO.Directory]::Move($env:EK_RACE_DIRECTORY, $env:EK_RACE_DIRECTORY + '-saved')
+        $null = New-Item -ItemType Junction -Path $env:EK_RACE_DIRECTORY -Target $env:EK_RACE_PRIVATE
+    }
+    return $item
+}
+& $env:EK_RACE_SCRIPT -Workspace $env:EK_RACE_WORKSPACE -Brief $env:EK_RACE_BRIEF -Out $env:EK_RACE_OUTPUT -Target $env:EK_RACE_TARGET
+exit $LASTEXITCODE
+''', encoding='utf-8-sig', newline='\r\n')
+race_result = execute(ps + ['-File', str(race_runner)], extra=dict(fakeenv,
+    EK_RACE_SCRIPT=str(scripts / 'ek-codex-review.ps1'), EK_RACE_WORKSPACE=str(workspace),
+    EK_RACE_BRIEF=str(brief), EK_RACE_OUTPUT=str(brief.with_name('read-race.md')),
+    EK_RACE_TARGET=str(race_target), EK_RACE_DIRECTORY=str(race_dir), EK_RACE_PRIVATE=str(inside_protected)))
+check(race_result.returncode == 1 and record.read_bytes() == record_before
+      and '실제 경로가 바뀌어' in race_result.stdout.decode('utf-8-sig')
+      and not brief.with_name('read-race.md').exists(), 'Codex 검사 후 junction 교체도 열린 핸들로 차단', race_result)
+import ctypes
+short = ctypes.create_unicode_buffer(32768)
+if ctypes.windll.kernel32.GetShortPathNameW(str(private_target), short, len(short)) and '~' in short.value:
+    result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, '-Target', short.value, '-Out', brief.with_name('short-blocked.md'), extra=fakeenv)
+    check(result.returncode == 1 and record.read_bytes() == record_before, 'Codex 8.3 실제 경로 보호 거부', result)
+else:
+    print('SKIP 8.3 별칭: 이 테스트 폴더에 짧은 이름 없음 (최종 경로 검사는 junction으로 검증)')
+large_targets = []
+for index in range(3):
+    item = workspace / f'결과/batch-{index}.txt'
+    item.write_bytes(b'x' * (180 * 1024))
+    large_targets.extend(('-Target', item))
+result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, *large_targets, '-Out', brief.with_name('total-too-large.md'), extra=fakeenv)
+check(result.returncode == 1 and record.read_bytes() == record_before, 'Codex 대상 합계 500KB 초과 거부', result)
+second_target = workspace / '입력/표.csv'
+second_target.write_text('항목,값\n수량,2', encoding='utf-8')
+result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, '-Target', target, '-Target', second_target, '-Out', brief.with_name('multiple.md'), extra=fakeenv)
+check(result.returncode == 0 and prompt_record.read_text(encoding='utf-8-sig').strip() == (expected_prompt()+'\n\n=== 파일: 입력/표.csv ===\n항목,값\n수량,2').strip(), 'Codex 반복 Target 파일 내용 블록 전달', result)
+protection.write_bytes(saved_protection)
 before = review_out.read_bytes()
 check(tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, '-Out', review_out, extra=fakeenv).returncode != 0 and
       review_out.read_bytes() == before, 'Codex 결과 덮어쓰기 거부')
@@ -188,7 +339,21 @@ shim_stdin = run / 'codex-shim-stdin.txt'
 result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, '-Out', workspace / '검토/shim 결과.md',
               extra=dict(fakeenv, PATH=str(shimbin)+os.pathsep+env['PATH'], EK_FAKE_STDIN=str(shim_stdin)))
 check(result.returncode == 0 and shim_stdin.exists() and
-      shim_stdin.read_text(encoding='utf-8-sig').strip() == brief.read_text(encoding='utf-8-sig').strip(), 'Codex ps1 실행기(npm)에도 한국어 브리프 stdin 전달', result)
+      shim_stdin.read_text(encoding='utf-8-sig').strip() == expected_prompt().strip(), 'Codex ps1 실행기(npm)에도 한국어 브리프 stdin 전달', result)
+for index, quote in enumerate('‘’‚‛'):
+    injection_work = home / (f'주입{index}' + quote + ';New-Item EK_INJECTION_MARKER;# $x `tick')
+    write_json(profile, dict(data, workspacePath=str(injection_work)))
+    result = tool('apply-workspace', '-TargetHome', home, '-ProfilePath', profile)
+    check(result.returncode == 0, f'workspace 특수문자 경로 {index+1} 생성', result)
+    injection_brief = injection_work / '검토/brief.md'
+    injection_brief.write_text('더미 검토', encoding='utf-8')
+    injection_out = injection_work / '검토/out.md'
+    result = subprocess.run(ps + ['-File', str(scripts / 'ek-codex-review.ps1'), '-Workspace', str(injection_work),
+                                 '-Brief', str(injection_brief), '-Target', str(injection_brief), '-Out', str(injection_out)], cwd=run,
+                            env=dict(env, **dict(fakeenv, PATH=str(shimbin)+os.pathsep+env['PATH'])), capture_output=True, timeout=60)
+    check(result.returncode == 0 and injection_out.exists() and not (run / 'EK_INJECTION_MARKER').exists() and
+          Path(json.loads(record.read_text(encoding='utf-8'))[-2]).parent.parent == injection_work / '검토',
+          f'Codex 둥근 따옴표 {index+1}·달러·백틱·세미콜론 인자 보존·주입 없음', result)
 result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, '-Out', workspace / '검토/실패.md', extra=dict(fakeenv, EK_FAKE_EXIT='7'))
 check(result.returncode == 7, 'Codex 종료 코드 7 전달', result)
 result = tool('ek-codex-review', '-Workspace', workspace, '-Brief', brief, '-Out', workspace / '검토/미설치.md', extra={'PATH': str(Path(ps[0]).parent)})
@@ -260,4 +425,4 @@ for name in set(listing.split('\0')) - {''}:
         if word.lower() in text.lower():
             violations.append(name + ': ' + word)
 check(not violations, '삭제 대상 참조 0 (이력 3개 제외): ' + ', '.join(violations))
-print('v0.2.0 실행 도구 검사 완료')
+print('v0.2.1 실행 도구 검사 완료')

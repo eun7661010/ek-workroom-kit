@@ -10,10 +10,13 @@ from pathlib import Path
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import unicodedata
+import time
+from urllib.parse import quote
 import zipfile
 import xml.etree.ElementTree as ET
 
@@ -171,6 +174,27 @@ def contains(parent, child):
     return child == parent or parent in child.parents
 
 
+def relative_inside(parent, child):
+    """Use the same case/Unicode comparison as contains on default Mac volumes."""
+    if not contains(parent, child):
+        raise ValueError('outside root')
+    return Path(*child.parts[len(parent.parts):])
+
+
+def hidden_path(path, boundary):
+    if not contains(boundary, path):
+        return True
+    current = path
+    while True:
+        info = current.stat()
+        if (current.name.startswith('.') or getattr(info, 'st_file_attributes', 0) & 2 or
+                getattr(info, 'st_flags', 0) & getattr(stat, 'UF_HIDDEN', 0x8000)):
+            return True
+        if same_location(current, boundary):
+            return False
+        current = current.parent
+
+
 def same_location(first, second):
     return contains(first, second) and contains(second, first)
 
@@ -187,8 +211,9 @@ def workspace(a):
     paths = profile.get('studentDataPaths')
     if not isinstance(paths, list) or not paths:
         raise SafeInputError('studentDataPaths 배열에 폴더 1개 이상이 필요합니다.')
+    protected = []
     for raw_student in paths:
-        student_paths(raw_student, a.home)
+        protected.extend(student_paths(raw_student, a.home))
         student = Path(os.path.abspath(raw_student))
         for w in (entered, actual):
             for s in (student, student.resolve()):
@@ -204,13 +229,28 @@ def workspace(a):
         'AGENTS.md': (templates / 'AGENTS.md').read_text(encoding='utf-8-sig'),
         '검토/검토요청-양식.md': (templates / 'review-brief.md').read_text(encoding='utf-8-sig'),
         '내-업무-실행법.md': (templates / 'flows' / (code + '.md')).read_text(encoding='utf-8-sig'),
+        '.ek-workroom/protected-paths.json': json.dumps(
+            {'schemaVersion': 1, 'paths': list(dict.fromkeys(protected))},
+            ensure_ascii=False, indent=2) + '\n',
     }
-    dirs = ('입력', '결과', '원본', '검토')
+    dirs = ('입력', '결과', '원본', '검토', '.ek-workroom')
     # Existing children may themselves be links. Validate before any mutation.
     for name in list(dirs) + list(files):
         if not contains(actual, (entered / name).resolve()):
             raise SafeInputError('작업실 밖으로 연결된 경로에는 쓰지 않습니다.')
+    metadata = entered / '.ek-workroom/protected-paths.json'
+    metadata_changed = False
+    if metadata.exists():
+        old = obj(metadata)
+        existing = old.get('paths')
+        if old.get('schemaVersion') != 1 or not isinstance(existing, list) or any(not isinstance(p, str) or not Path(p).is_absolute() for p in existing):
+            raise SafeInputError('보호 경로 목록을 확인할 수 없습니다. 판매자와 확인하세요.')
+        merged = list(dict.fromkeys(existing + protected))
+        metadata_changed = merged != existing
+        files['.ek-workroom/protected-paths.json'] = json.dumps({'schemaVersion': 1, 'paths': merged}, ensure_ascii=False, indent=2) + '\n'
     if a.dry_run:
+        if metadata_changed:
+            print('병합 예정: .ek-workroom/protected-paths.json')
         for name in dirs + tuple(files):
             if not (entered / name).exists() and not (entered / name).is_symlink():
                 print('만들 예정: ' + name)
@@ -219,7 +259,16 @@ def workspace(a):
         (entered / name).mkdir(parents=True, exist_ok=True)
     for name, content in files.items():
         target = entered / name
-        if target.exists() or target.is_symlink():
+        if target == metadata and metadata_changed:
+            stamp = datetime.datetime.now().strftime('%Y%m%dT%H%M%S%f')
+            with metadata.with_name(metadata.name + '.bak-' + stamp).open('xb') as saved:
+                saved.write(metadata.read_bytes())
+            fd, temporary = tempfile.mkstemp(prefix='.ek-write-', dir=metadata.parent)
+            with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as saved:
+                saved.write(content)
+            os.replace(temporary, metadata)
+            print('보호 경로 병합: ' + name)
+        elif target.exists() or target.is_symlink():
             print('기존 파일 유지: ' + name)
         else:
             with target.open('x', encoding='utf-8', newline='\n') as out:
@@ -280,9 +329,28 @@ def hwpx_text(a):
 
 
 def pdf(a):
-    source = Path(a.html).resolve(strict=True)
+    entered = Path(a.html).absolute()
+    source = entered.resolve(strict=True)
     if not source.is_file() or source.suffix.lower() not in ('.html', '.htm'):
         raise SafeInputError('HTML 파일을 지정하세요.')
+    workspace_root = next((folder for folder in (entered.parent, *entered.parent.parents)
+                           if (folder / '.ek-workroom/protected-paths.json').is_file()), None)
+    if workspace_root is None:
+        print('작업실 안 HTML만 PDF로 만들 수 있습니다')
+        return 2
+    base = workspace_root.resolve(strict=True)
+    server_root = entered.parent.resolve(strict=True)
+    paths = protected_paths(base)
+    if paths is None:
+        return 2
+    protected = [Path(path).resolve() for path in paths]
+    if (not contains(base, source) or not contains(base, server_root) or not contains(server_root, source) or
+            any(contains(folder, source) or contains(folder, server_root) or
+                contains(server_root, folder) for folder in protected)):
+        raise SafeInputError('보호 대상 폴더를 포함한 위치에서는 PDF를 만들 수 없습니다.')
+    with source.open('rb') as stream:
+        if os.fstat(stream.fileno()).st_nlink >= 2:
+            raise SafeInputError('하드링크 HTML은 PDF로 만들 수 없습니다.')
     output = new_output(a.pdf)
     override = os.environ.get('EK_PDF_BROWSER')
     candidates = ([override] if override is not None else [
@@ -293,22 +361,159 @@ def pdf(a):
         print('브라우저에서 열어 인쇄→PDF로 저장하세요.')
         return 2
     with tempfile.TemporaryDirectory(prefix='ek-pdf-') as temporary:
-        # The browser writes in a private temporary directory; publish with exclusive create.
         rendered = Path(temporary) / 'output.pdf'
-        result = subprocess.run([browser, '--headless', '--disable-gpu', '--no-first-run',
-                                 '--no-pdf-header-footer', '--user-data-dir=' + temporary,
-                                 '--print-to-pdf=' + str(rendered), source.as_uri()],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
-        if result.returncode or not rendered.is_file():
-            raise SafeInputError('PDF를 만들지 못했습니다. HTML을 확인하세요.')
-        data = rendered.read_bytes()
-        pages = len(re.findall(rb'/Type\s*/Page\b', data))
-        if not pages:
-            raise SafeInputError('PDF 페이지를 확인하지 못했습니다.')
-        with output.open('xb') as stream:
-            stream.write(data)
+        token = os.urandom(16).hex()
+        child_env = dict(os.environ, EK_PDF_ROOT=str(server_root), EK_PDF_STATE_DIR=temporary, EK_PDF_TOKEN=token)
+        server = subprocess.Popen([sys.executable, '-B', str(Path(__file__).with_name('pdf_server.py'))],
+                                  env=child_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            port_file = Path(temporary) / 'port.txt'
+            deadline = time.monotonic() + 10
+            while not port_file.exists():
+                if server.poll() is not None or time.monotonic() >= deadline:
+                    raise SafeInputError('PDF 임시 서버를 시작하지 못했습니다.')
+                time.sleep(0.02)
+            port = int(port_file.read_text(encoding='ascii'))
+            url = f'http://127.0.0.1:{port}/{token}/' + quote(entered.name, safe='')
+            result = subprocess.run([browser, '--headless', '--disable-gpu', '--no-first-run',
+                                     '--no-pdf-header-footer', '--proxy-server=127.0.0.1:9',
+                                     f'--proxy-bypass-list=<-loopback>;127.0.0.1:{port}',
+                                     '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1',
+                                     '--disable-background-networking', '--disable-extensions',
+                                     '--user-data-dir=' + temporary,
+                                     '--print-to-pdf=' + str(rendered), url],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+            if result.returncode or not rendered.is_file():
+                raise SafeInputError('PDF를 만들지 못했습니다. HTML을 확인하세요.')
+            data = rendered.read_bytes()
+            pages = len(re.findall(rb'/Type\s*/Page\b', data))
+            if not pages:
+                raise SafeInputError('PDF 페이지를 확인하지 못했습니다.')
+            with output.open('xb') as stream:
+                stream.write(data)
+        finally:
+            if server.poll() is None:
+                server.terminate()
+            server.wait(timeout=10)
     print(f'PDF {pages}쪽: {output.name}')
     return 0
+
+
+CODEX_DISABLED_FEATURES = [
+    'shell_tool', 'unified_exec', 'browser_use', 'browser_use_external',
+    'browser_use_full_cdp_access', 'in_app_browser', 'computer_use', 'apps',
+    'plugins', 'remote_plugin', 'multi_agent', 'view_image', 'code_mode_host',
+    'memories', 'hooks', 'workspace_dependencies', 'skill_mcp_dependency_install',
+]
+CODEX_CONFIG = ['mcp_servers={}', 'web_search="disabled"']
+REVIEW_HEADER = '아래 파일 내용만 근거로 검토한다. 도구는 없다. 결과는 답변 텍스트로만.\n\n'
+
+
+def protected_paths(base):
+    metadata = base / '.ek-workroom/protected-paths.json'
+    if not metadata.is_file():
+        print('작업실 만들기(ek-mode)를 먼저 하세요')
+        return None
+    if not contains(base, metadata.resolve()):
+        raise SafeInputError('보호 경로 목록을 확인할 수 없습니다. 판매자와 확인하세요.')
+    value = obj(metadata)
+    paths = value.get('paths')
+    if value.get('schemaVersion') != 1 or not isinstance(paths, list) or not paths:
+        raise SafeInputError('보호 경로 목록을 확인할 수 없습니다. 판매자와 확인하세요.')
+    for path in paths:
+        if not isinstance(path, str) or not path.strip() or not Path(path).is_absolute() or Path(path) == Path(Path(path).anchor):
+            raise SafeInputError('보호 경로 목록을 확인할 수 없습니다. 판매자와 확인하세요.')
+    return paths
+
+
+def protected_brief(paths, prompt):
+    def normalize(text):
+        text = unicodedata.normalize('NFKC', text)
+        text = ''.join(char for char in text if unicodedata.category(char) != 'Cf'
+                       and char != '\u034f' and not '\u180b' <= char <= '\u180d'
+                       and not '\ufe00' <= char <= '\ufe0f')
+        return text.replace('\\', '/').casefold().rstrip('/')
+    normalized = normalize(prompt)
+    for path in paths:
+        candidate = normalize(path)
+        name = candidate.rsplit('/', 1)[-1]
+        if candidate in normalized or name in normalized:
+            raise SafeInputError('검토 요청에 보호 대상 폴더가 있습니다. 학생 경로를 빼고 다시 작성하세요.')
+
+
+def opened_file_path(stream):
+    """Get the final name of this open handle; never reopen a checked name."""
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+        import msvcrt
+        function = ctypes.WinDLL('kernel32', use_last_error=True).GetFinalPathNameByHandleW
+        function.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
+        function.restype = wintypes.DWORD
+        handle = msvcrt.get_osfhandle(stream.fileno())
+        size = function(handle, None, 0, 0)
+        if not size:
+            raise OSError('handle path unavailable')
+        buffer = ctypes.create_unicode_buffer(size + 1)
+        length = function(handle, buffer, len(buffer), 0)
+        if not length or length >= len(buffer):
+            raise OSError('handle path unavailable')
+        value = buffer.value
+        if value.startswith('\\\\?\\UNC\\'):
+            value = '\\\\' + value[8:]
+        elif value.startswith('\\\\?\\'):
+            value = value[4:]
+        return Path(value)
+    if sys.platform == 'darwin':
+        import fcntl
+        return Path(os.fsdecode(fcntl.fcntl(stream.fileno(), 50, b'\0' * 1024).split(b'\0', 1)[0]))
+    return Path(os.readlink(f'/proc/self/fd/{stream.fileno()}'))
+
+
+def read_review_file(base, paths, raw, boundary=None):
+    entered = Path(raw).absolute()
+    target = entered.resolve(strict=True)
+    protected = [Path(path).resolve() for path in paths]
+    boundary = boundary or base
+    def validate(actual):
+        if (not contains(boundary, actual) or same_location(boundary, actual) or
+                any(contains(folder, actual) for folder in protected)):
+            raise SafeInputError('검토 파일은 작업실 안의 보호되지 않은 파일이어야 합니다.')
+        if hidden_path(actual, base):
+            raise SafeInputError('숨김 폴더나 파일은 검토 대상으로 지정할 수 없습니다.')
+        if actual.suffix.lower() not in ('.md', '.txt', '.html', '.htm', '.csv'):
+            raise SafeInputError('검토 파일은 md·txt·html·htm·csv 파일만 가능합니다.')
+    validate(target)
+    if contains(base, entered) and hidden_path(entered, base):
+        raise SafeInputError('숨김 폴더나 파일은 검토 대상으로 지정할 수 없습니다.')
+    with target.open('rb') as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink >= 2:
+            raise SafeInputError('하드링크 파일은 검토 대상으로 지정할 수 없습니다.')
+        opened = opened_file_path(stream)
+        validate(opened)
+        data = stream.read(200 * 1024 + 1)
+    if len(data) > 200 * 1024:
+        raise SafeInputError('검토 파일 크기는 파일당 200KB 이하여야 합니다.')
+    try:
+        text = data.decode('utf-8-sig', errors='strict')
+    except UnicodeError:
+        raise SafeInputError('검토 파일은 UTF-8로 저장한 파일이어야 합니다.')
+    return text, relative_inside(base, opened), len(data)
+
+
+def target_text(base, paths, targets):
+    if not targets:
+        raise SafeInputError('검토 대상 파일을 1개 이상 지정하세요.')
+    total = 0
+    blocks = []
+    for raw in targets:
+        text, relative, size = read_review_file(base, paths, raw)
+        total += size
+        if total > 500 * 1024:
+            raise SafeInputError('검토 대상 크기는 파일당 200KB·합계 500KB 이하여야 합니다.')
+        blocks.append('\n\n=== 파일: ' + relative.as_posix() + ' ===\n' + text)
+    return ''.join(blocks)
 
 
 def codex_review(a):
@@ -319,15 +524,27 @@ def codex_review(a):
     if (review == base or not contains(base, review) or brief == review or
             not contains(review, brief) or not contains(review, output.resolve()) or not brief.is_file()):
         raise SafeInputError('검토 요청과 결과는 작업실의 검토 폴더 안에 있어야 합니다.')
+    paths = protected_paths(base)
+    if paths is None:
+        return 2
+    prompt, _, _ = read_review_file(base, paths, a.brief, boundary=review)
+    protected_brief(paths, prompt)
+    files = target_text(base, paths, a.target)
     executable = shutil.which('codex')
     if not executable:
         print('Codex 설치·로그인 먼저 확인하세요.')
         return 2
-    prompt = brief.read_text(encoding='utf-8-sig')
-    with tempfile.TemporaryDirectory(prefix='.ek-review-', dir=review) as temporary:
+    prompt = REVIEW_HEADER + prompt + files
+    with tempfile.TemporaryDirectory(prefix='.ek-review-', dir=review) as temporary, tempfile.TemporaryDirectory(prefix='ek-codex-empty-') as empty:
         staged = Path(temporary) / 'result.md'
-        result = subprocess.run([executable, 'exec', '--sandbox', 'read-only', '--skip-git-repo-check',
-                                 '--ephemeral', '--color', 'never', '-C', str(base), '-o', str(staged), '-'],
+        arguments = [executable, 'exec', '--sandbox', 'read-only', '--skip-git-repo-check',
+                     '--ephemeral', '--color', 'never', '-C', empty]
+        for feature in CODEX_DISABLED_FEATURES:
+            arguments += ['--disable', feature]
+        for config in CODEX_CONFIG:
+            arguments += ['-c', config]
+        arguments += ['-o', str(staged), '-']
+        result = subprocess.run(arguments,
                                 input=prompt.encode('utf-8'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if result.returncode:
             print('Codex 검토를 마치지 못했습니다.')
@@ -478,6 +695,7 @@ def main():
     parser.add_argument('--output')
     for option in ('html', 'pdf', 'hwpx', 'out', 'workspace', 'brief'):
         parser.add_argument('--' + option)
+    parser.add_argument('--target', action='append')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--dry-run', action='store_true')
     a = parser.parse_args()

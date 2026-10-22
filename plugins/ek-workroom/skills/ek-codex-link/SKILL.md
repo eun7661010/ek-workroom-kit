@@ -10,10 +10,20 @@ disable-model-invocation: true
 `${CLAUDE_PLUGIN_ROOT}`는 설치된 플러그인 절대 경로로 치환합니다. 고객 홈과 프로필도 고객이 지정한 절대 경로를 사용합니다.
 
 ## 순서
+Codex는 파일·명령·인터넷 도구 없이 스크립트가 넘긴 내용만 봅니다. 대상 파일의 실제 경로·크기·인코딩을 먼저 검사하고, 빈 임시 폴더에서 도구를 비활성화해 실행합니다. `.ek-workroom/protected-paths.json`이 없으면 `ek-mode`로 작업실을 먼저 만듭니다. 학생 폴더가 추가되면 프로필을 확인하고 `ek-mode`를 재실행해 기존 보호 목록과 병합·백업합니다. 학생 경로는 브리프에도 넣지 않습니다.
+
 1. 부트스트랩에서 Codex 설치가 완료됐는지 확인합니다. `codex --version`과 `codex login status`를 고객 화면에서 확인합니다. 이메일·인증 파일을 판매자 AI에 전달하지 않습니다. 미설치면 부트스트랩 결과를 확인하고 연동 미완료로 남깁니다. 직접 설치 명령을 만들지 않습니다.
 2. 로그인이 필요하면 본인 터미널의 `codex login`에서 본인 ChatGPT 계정으로 로그인합니다. 브라우저 연결이 막히면 `codex login --device-auth`의 공식 주소와 코드를 본인이 직접 사용합니다. 코드·비밀번호를 전달하지 않습니다.
 3. ek-mode로 만든 비식별 작업실만 사용합니다. `/ek-workroom:cross-check`로 **더미 초안 한 개를 1회 검토**합니다. 브리프 계획→원장 승인→검토 폴더에 저장→스크립트 실행→지적별 판정→반영 계획 승인→새 파일 반영 순서입니다.
-4. 고객이 원문·검토 결과·판정·수정본을 열어 차이를 설명하면 완료입니다. read-only는 학생정보 읽기를 막는 OS 격리가 아니므로 작업실에 개인정보·비밀값을 두지 않습니다.
+4. 고객이 원문·검토 결과·판정·수정본을 열어 차이를 설명하면 완료입니다. 대상 텍스트를 본인 AI에 전달하므로 작업실에 개인정보·비밀값을 두지 않습니다.
+
+`cross-check`의 브리프·대상 승인 후 더미 초안 검토 명령:
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/ek-codex-review.ps1" -Workspace "<작업실>" -Brief "<작업실>/검토/더미-요청.md" -Target "<작업실>/결과/더미-초안.md" -Out "<작업실>/검토/더미-결과.md"
+```
+```sh
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ek-codex-review.sh" --workspace "<작업실>" --brief "<작업실>/검토/더미-요청.md" --target "<작업실>/결과/더미-초안.md" --out "<작업실>/검토/더미-결과.md"
+```
 
 ## 막힐 때
 인증·실행이 실패하면 안전 옵션을 완화하거나 임의 명령으로 재실행하지 않습니다. Claude 단독 검수는 임시 결과로 표시하고 Codex 연동 미완료와 마지막 성공 단계를 인계합니다. Codex 홈 설정 변경·API 키 연결·대리 로그인·계정 공유를 하지 않습니다.

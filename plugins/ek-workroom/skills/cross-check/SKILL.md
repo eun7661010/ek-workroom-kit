@@ -11,15 +11,17 @@ description: Claude 초안을 Codex로 읽기 전용 교차 검토하거나 다�
 `${CLAUDE_PLUGIN_ROOT}`는 설치된 플러그인 절대 경로로 치환합니다. 현재 폴더에서 스크립트를 찾거나 즉석 변환 명령을 만들지 않습니다. `<작업실>`과 입출력은 고객이 지정한 절대 경로로 바꿉니다.
 
 ## 순서
+Codex는 파일·명령·인터넷 도구와 웹 검색 없이 스크립트가 넘긴 내용만 봅니다. 스크립트가 브리프와 대상의 실제 경로를 확인하고 읽어서 전달하며 Codex는 빈 임시 폴더에서 실행됩니다. 브리프도 200KB 이하의 UTF-8이어야 하고, 하드링크나 숨김 폴더 안의 파일은 거부합니다. `ek-mode`가 만든 `.ek-workroom/protected-paths.json`이 있어야 실행합니다. 학생 경로를 브리프에 넣지 않으며 보조 검사에 걸리면 멈춥니다. 보호 목록을 지우거나 실행 옵션을 완화하지 않습니다.
+
 1. Claude가 작업실 `검토/`에 저장할 **브리프 작성 계획**을 먼저 보여 줍니다. 목표·검토 대상 파일·확인 기준·금지(학생정보·비밀값 접근, 파일 수정, 설치, 외부 검색·전송)를 명시합니다. `${CLAUDE_PLUGIN_ROOT}/templates/review-brief.md`를 참고합니다. 원장이 승인한 뒤에만 `검토/검토요청-새번호.md`에 저장합니다. 기존 브리프를 덮어쓰지 않습니다.
-2. 아래 결정적 스크립트에 승인된 브리프를 전달합니다. Codex는 read-only로 검토하고 새 결과 파일에만 답변합니다. Codex가 직접 대상 파일을 고치지 않습니다.
+2. 아래 결정적 스크립트에 승인된 브리프와 대상 파일을 함께 전달합니다. 대상은 작업실 안의 개인정보 없는 `.md .txt .html .htm .csv` 중 1개 이상이며, 파일당 200KB·합계 500KB 이하의 UTF-8 문서입니다. 보호 폴더·숨김 폴더·작업실 밖으로 연결된 파일은 거부합니다. 여러 파일은 `-Target` 또는 `--target`을 반복합니다. Codex는 전달받은 내용으로 검토하고 답변 텍스트만 돌려줍니다.
 Windows:
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/ek-codex-review.ps1" -Workspace "<작업실>" -Brief "<작업실>/검토/검토요청-새번호.md" -Out "<작업실>/검토/검토결과-새번호.md"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PLUGIN_ROOT}/scripts/ek-codex-review.ps1" -Workspace "<작업실>" -Brief "<작업실>/검토/검토요청-새번호.md" -Target "<작업실>/결과/초안.md" -Out "<작업실>/검토/검토결과-새번호.md"
 ```
 Mac:
 ```sh
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/ek-codex-review.sh" --workspace "<작업실>" --brief "<작업실>/검토/검토요청-새번호.md" --out "<작업실>/검토/검토결과-새번호.md"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ek-codex-review.sh" --workspace "<작업실>" --brief "<작업실>/검토/검토요청-새번호.md" --target "<작업실>/결과/초안.md" --out "<작업실>/검토/검토결과-새번호.md"
 ```
 3. 결과 파일을 열고 Claude가 지적마다 **맞음/틀림/부분 + 근거**를 판정합니다. 원문·근거 파일 위치로 대조하며 결론을 그대로 채택하지 않습니다.
 4. 맞는 지적만 반영할 계획과 새 파일 이름을 보여 줍니다. 원장 승인 뒤 **새 파일**로 반영합니다. 부분 지적은 맞는 부분을 구분해 승인받습니다. 기존 초안·검토 결과를 유지하고 수정본을 열어 확인한 뒤 완료를 말합니다.
@@ -28,4 +30,4 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/ek-codex-review.sh" --workspace "<작업실>
 브리프 목표를 ‘같은 근거와 조건으로 대안 초안 작성’으로 정하고 문체·분량·유지할 사실을 명시합니다. 같은 승인 순서와 스크립트로 **결과 파일에만** 대안을 받습니다. Claude가 사실·조건 충족을 판정하고 채택할 부분은 원장 승인 후 새 파일로 옮깁니다.
 
 ## 막힐 때
-종료 코드 2이면 Codex 설치·로그인을 먼저 확인합니다. 부트스트랩 설치 결과를 확인하며 즉석 설치 명령을 만들지 않습니다. read-only 실패는 옵션을 완화하지 않고 검토 미완료로 남깁니다. 인증 파일·홈 설정을 읽거나 고치지 않습니다.
+종료 코드 2이면 안내에 따라 작업실 만들기(`ek-mode`) 또는 Codex 설치·로그인을 먼저 확인합니다. 부트스트랩 설치 결과를 확인하며 즉석 설치 명령을 만들지 않습니다. read-only 실패는 옵션을 완화하지 않고 검토 미완료로 남깁니다. 인증 파일·홈 설정을 읽거나 고치지 않습니다.

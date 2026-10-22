@@ -45,6 +45,8 @@ function Get-EkFinalPath([string]$Path) {
         $create.SetImplementationFlags([Reflection.MethodImplAttributes]::PreserveSig)
         $resolve = $builder.DefinePInvokeMethod('GetFinalPathNameByHandle','kernel32.dll','GetFinalPathNameByHandleW',$attrs,[Reflection.CallingConventions]::Standard,[uint32],[type[]]@([Microsoft.Win32.SafeHandles.SafeFileHandle],[Text.StringBuilder],[uint32],[uint32]),[Runtime.InteropServices.CallingConvention]::Winapi,[Runtime.InteropServices.CharSet]::Unicode)
         $resolve.SetImplementationFlags([Reflection.MethodImplAttributes]::PreserveSig)
+        $details = $builder.DefinePInvokeMethod('GetFileInformationByHandle','kernel32.dll','GetFileInformationByHandle',$attrs,[Reflection.CallingConventions]::Standard,[bool],[type[]]@([Microsoft.Win32.SafeHandles.SafeFileHandle],[IntPtr]),[Runtime.InteropServices.CallingConvention]::Winapi,[Runtime.InteropServices.CharSet]::Unicode)
+        $details.SetImplementationFlags([Reflection.MethodImplAttributes]::PreserveSig)
         $null = $builder.CreateType()
     }
     $handle = [EkNativePath]::CreateFile([IO.Path]::GetFullPath($Path),0,7,[IntPtr]::Zero,3,0x02000000,[IntPtr]::Zero)
@@ -58,6 +60,21 @@ function Get-EkFinalPath([string]$Path) {
     if ($value.StartsWith('\\?\UNC\')) { Throw-EkInput '네트워크 연결 경로는 사용할 수 없습니다. 로컬 폴더를 선택하세요.' }
     if ($value.StartsWith('\\?\')) { $value = $value.Substring(4) }
     return $value
+}
+# BY_HANDLE_FILE_INFORMATION is 52 bytes; DWORD attributes offset 0, link count offset 40.
+function Get-EkHandleInfo([IO.FileStream]$Stream) {
+    if (-not ('EkNativePath' -as [type])) { $null = Get-EkFinalPath $Stream.Name }
+    $buffer = New-Object Text.StringBuilder 32768
+    $length = [EkNativePath]::GetFinalPathNameByHandle($Stream.SafeFileHandle,$buffer,[uint32]$buffer.Capacity,0)
+    if (-not $length -or $length -ge $buffer.Capacity) { Throw-EkInput '열린 파일의 실제 경로를 확인할 수 없습니다.' }
+    $path = $buffer.ToString()
+    if ($path.StartsWith('\\?\UNC\')) { Throw-EkInput '네트워크 연결 경로는 사용할 수 없습니다.' }
+    if ($path.StartsWith('\\?\')) { $path = $path.Substring(4) }
+    $memory = [Runtime.InteropServices.Marshal]::AllocHGlobal(52)
+    try {
+        if (-not [EkNativePath]::GetFileInformationByHandle($Stream.SafeFileHandle,$memory)) { Throw-EkInput '열린 파일 정보를 확인할 수 없습니다.' }
+        return @{ Path=$path; Links=[uint32][Runtime.InteropServices.Marshal]::ReadInt32($memory,40); Attributes=[uint32][Runtime.InteropServices.Marshal]::ReadInt32($memory,0) }
+    } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($memory) }
 }
 function Assert-EkSafePath([string]$Path, [string]$TargetHome) {
     if (-not $TargetHome) { Throw-EkInput '저장 경로의 홈 기준이 필요합니다.' }
@@ -151,7 +168,7 @@ function Assert-EkNewOutput([string]$Path) {
 function ConvertTo-EkArgument([string]$Value) {
     return '"' + [regex]::Replace([regex]::Replace($Value,'(\\*)"','$1$1\"'),'(\\+)$','$1$1') + '"'
 }
-function Start-EkProcess([string]$Executable, [string[]]$Arguments, [string]$InputText = '', [int]$TimeoutSeconds = 120) {
+function Start-EkProcess([string]$Executable, [string[]]$Arguments, [string]$InputText = '', [int]$TimeoutSeconds = 120, [hashtable]$EnvironmentVariables = @{}) {
     [Console]::InputEncoding = New-Object Text.UTF8Encoding $false
     $info = New-Object Diagnostics.ProcessStartInfo
     $info.FileName = $Executable
@@ -159,6 +176,7 @@ function Start-EkProcess([string]$Executable, [string[]]$Arguments, [string]$Inp
     $info.UseShellExecute = $false; $info.CreateNoWindow = $true
     $info.RedirectStandardOutput = $true; $info.RedirectStandardError = $true; $info.RedirectStandardInput = $true
     $info.StandardOutputEncoding = New-Object Text.UTF8Encoding $false
+    foreach ($name in $EnvironmentVariables.Keys) { $info.EnvironmentVariables[$name] = [string]$EnvironmentVariables[$name] }
     $process = New-Object Diagnostics.Process
     $process.StartInfo = $info
     try {

@@ -3,7 +3,7 @@
 param(
     [string]$Source,[ValidatePattern('^[a-fA-F0-9]{64}$')][string]$ExpectedSha256,
     [string]$TargetHome=$env:USERPROFILE,
-    [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Version='0.2.0',
+    [ValidatePattern('^[A-Za-z0-9._-]+$')][string]$Version='0.2.1',
     [switch]$DryRun,[switch]$Apply,[switch]$Library
 )
 $ErrorActionPreference='Stop'
@@ -43,7 +43,7 @@ function Assert-EkZip($Zip) {
     }
 }
 function Initialize-EkKit {
-    param([string]$Source,[string]$ExpectedSha256,[string]$TargetHome,[string]$Version='0.2.0',[switch]$Prepare)
+    param([string]$Source,[string]$ExpectedSha256,[string]$TargetHome,[string]$Version='0.2.1',[switch]$Prepare)
     if(-not $TargetHome -or -not $Source -or $ExpectedSha256 -notmatch '^[a-fA-F0-9]{64}$' -or $Version -notmatch '^[A-Za-z0-9._-]+$') { throw '키트 위치·SHA256·홈 경로·버전을 확인하세요.' }
     $base=Join-Path ([IO.Path]::GetFullPath($TargetHome)) 'ek-workroom'
     $destination=Join-Path $base ('kit-'+$Version)
