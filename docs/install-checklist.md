@@ -1,13 +1,14 @@
-# 키트 v0.2.2 설치·설정 체크리스트
+# 키트 v0.2.3 설치·설정 체크리스트
 
 판매자가 세션·리허설 중에 한 줄씩 확인하는 표입니다. **키트가 고객 PC에 하는 일을 빠짐없이** 적었습니다. 여기 없는 변경은 키트가 하지 않습니다. 각 줄의 "확인"을 고객 화면에서 직접 보고 ☐에 표시합니다.
 
-## 1. 설치되는 프로그램 (2개, 없을 때만)
+## 1. 설치되는 프로그램 (2개, 없을 때만)과 Mac 사전 준비
 
 | ☐ | 무엇 | 어디에 | 누가·어떻게 | 확인 | 통과 기준 |
 |---|---|---|---|---|---|
 | ☐ | Claude Code | `~/.local/bin/claude.exe` (Mac `~/.local/bin/claude`) | 부트스트랩이 공식 설치 파일(`claude.ai/install.ps1`)을 받아 별도 창에서 실행. 관리자 권한 불필요. 설치 뒤 Windows 서명 확인 | `claude --version` | 버전 번호 출력 |
 | ☐ | Codex CLI | 공식 설치 위치 | 부트스트랩이 공식 설치 파일(`chatgpt.com/codex/install.ps1`)을 같은 방식으로 실행. 실패해도 Claude는 그대로 두고 "Codex 설치 미완료" 표시 | `codex --version` | 버전 번호 출력 |
+| ☐ | Mac: Apple 개발 도구(고객이 D-1에 직접 설치, 키트는 설치하지 않음) | Apple 공식 Command Line Tools | python3가 없다는 안내가 나오면 고객이 터미널에서 `xcode-select --install` 입력 → 설치(약 10분) → 판매자 블록 다시 붙여넣기 | 진단의 `python3` 줄 | Apple 개발 도구의 python3 3.9.6 또는 기존 python3 3.9 이상 |
 
 이미 깔려 있으면 건너뛰고 "이미 있어 그대로 사용"이라고 나옵니다. 업그레이드·재설치는 하지 않습니다. 공식 설치 프로그램은 자기 실행 폴더를 사용자 PATH에 추가할 수 있습니다. 이 동작은 키트가 아니라 공식 설치 프로그램이 합니다.
 
@@ -15,14 +16,14 @@
 
 | ☐ | 무엇 | 어디에 | 확인 | 통과 기준 |
 |---|---|---|---|---|
-| ☐ | 키트 원본 | `~/ek-workroom/kit-0.2.2/` | 부트스트랩 출력의 "키트 고정 위치" 줄 | 확인값(SHA256) 일치 문구가 먼저 나옴 |
+| ☐ | 키트 원본 | `~/ek-workroom/kit-0.2.3/` | 부트스트랩 출력의 "키트 고정 위치" 줄 | 확인값(SHA256) 일치 문구가 먼저 나옴 |
 | ☐ | 진단 파일 | `~/ek-diag.txt` | 고객이 메모장으로 열기 | 이름·이메일·전화번호·홈 경로가 가려져 있음 |
 
 ## 3. Claude Code 플러그인 (1개)
 
 | ☐ | 무엇 | 어떻게 | 확인 | 통과 기준 |
 |---|---|---|---|---|
-| ☐ | `ek-workroom` 플러그인 | `claude plugin marketplace add "<키트 고정 위치>"` → `claude plugin install ek-workroom@ek-workroom` | Claude 안에서 `/plugin` | ek-workroom 0.2.2 사용 중 |
+| ☐ | `ek-workroom` 플러그인 | `claude plugin marketplace add "<키트 고정 위치>"` → `claude plugin install ek-workroom@ek-workroom` | Claude 안에서 `/plugin` | ek-workroom 0.2.3 사용 중 |
 | ☐ | 스킬 16개 | 플러그인에 포함 | `/ek-workroom:` 입력 후 목록 | 진행용 6개 + 고객용 10개(5절) |
 
 이 두 명령은 Claude Code가 자기 설정(`~/.claude/settings.json`의 플러그인 사용 목록, 플러그인 캐시 폴더)에 기록합니다.
@@ -81,7 +82,8 @@
 
 ## 7. 키트가 하지 않는 것
 
-- Node·Python·Git·글꼴 등 다른 프로그램 설치·업그레이드
+- Python 설치 없음(Mac은 Apple 개발 도구 예외): 고객이 D-1에 직접 설치하며 키트는 설치하지 않음
+- Node·Git·글꼴 등 다른 프로그램 설치·업그레이드
 - 관리자 권한 요구, 실행 정책·보안 프로그램·환경변수 영구 변경
 - 원격 접속 프로그램 설치, 예약 작업 등록, 백그라운드 상시 실행
 - 문자·알림톡·메일·SNS 자동 발송, 판매자에게 자동 전송
@@ -115,7 +117,7 @@
 | ☐ | 새 터미널에서 `claude` → 본인 로그인 | 로그인 중 Zoom 공유 끄기. `/status`로 본인 계정 확인 |
 | ☐ | `codex` → 본인 로그인 | 막히면 `codex login --device-auth` |
 | ☐ | Codex 전역 설정이 비었는지 확인 | `~/.codex/`에 `AGENTS.md`·`skills/`가 없고 `config.toml`에 `mcp_servers`가 없음. 있으면 고객이 쓰던 것이니 지우지 말고 판매자와 상의(교차 검토는 MCP를 끄지만 전역 지시문은 읽힐 수 있음) |
-| ☐ | 플러그인 설치 2줄 | `/plugin`에 ek-workroom 0.2.2 |
+| ☐ | 플러그인 설치 2줄 | `/plugin`에 ek-workroom 0.2.3 |
 | ☐ | `/ek-workroom:ek-safety` | 미리보기 → 승인 → 적용 → Claude 재시작 → 차단 시험 통과 |
 | ☐ | `/ek-workroom:ek-mode` | 상태줄 표시, `~/AI작업실` 생성 |
 | ☐ | 작업실에서 `claude` 다시 열기 → `/ek-workroom:ek-codex-link` | 검토 결과가 `검토/`에 새 파일로 생김 |

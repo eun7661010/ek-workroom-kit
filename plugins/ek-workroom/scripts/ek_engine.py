@@ -1,4 +1,4 @@
-"""Mac 실행기: 표준 라이브러리만 사용. Python이 없으면 셸이 안내 후 중단한다."""
+"""Mac 실행기: Python 3.9 이상, 표준 라이브러리만 사용."""
 import argparse
 import copy
 import datetime
@@ -6,6 +6,7 @@ import json
 import math
 import ipaddress
 import os
+import signal
 from pathlib import Path
 import platform
 import re
@@ -399,6 +400,7 @@ def pdf(a):
     return 0
 
 
+CODEX_REVIEW_TIMEOUT = 600
 CODEX_DISABLED_FEATURES = [
     'shell_tool', 'unified_exec', 'browser_use', 'browser_use_external',
     'browser_use_full_cdp_access', 'in_app_browser', 'computer_use', 'apps',
@@ -516,6 +518,38 @@ def target_text(base, paths, targets):
     return ''.join(blocks)
 
 
+def codex_review_timeout():
+    value = os.environ.get('EK_CODEX_REVIEW_TIMEOUT', '')
+    if re.fullmatch(r'[0-9]+', value):
+        try:
+            seconds = int(value)
+            if 1 <= seconds <= CODEX_REVIEW_TIMEOUT:
+                return seconds
+        except ValueError:
+            pass
+    return CODEX_REVIEW_TIMEOUT
+
+
+def run_codex(arguments, *, input):
+    # 깨진 옛 Codex도 세션을 끝없이 붙잡지 않도록 별도 프로세스 그룹에 제한을 둡니다.
+    process = subprocess.Popen(arguments, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, start_new_session=True)
+    try:
+        process.communicate(input, timeout=codex_review_timeout())
+    except subprocess.TimeoutExpired:
+        if os.name == 'nt':
+            subprocess.run(['taskkill.exe', '/T', '/F', '/PID', str(process.pid)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+        else:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except (OSError, AttributeError):
+                process.kill()
+        process.wait()
+        raise
+    return subprocess.CompletedProcess(arguments, process.returncode)
+
+
 def codex_review(a):
     base = Path(a.workspace).resolve(strict=True)
     review = (base / '검토').resolve(strict=True)
@@ -544,11 +578,14 @@ def codex_review(a):
         for config in CODEX_CONFIG:
             arguments += ['-c', config]
         arguments += ['-o', str(staged), '-']
-        result = subprocess.run(arguments,
-                                input=prompt.encode('utf-8'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if result.returncode:
+        try:
+            process = run_codex(arguments, input=prompt.encode('utf-8'))
+        except subprocess.TimeoutExpired:
+            print('Codex 검토가 10분 안에 끝나지 않아 멈췄습니다. 새 터미널에서 codex --version과 로그인을 확인하세요.')
+            return 1
+        if process.returncode:
             print('Codex 검토를 마치지 못했습니다.')
-            return result.returncode
+            return process.returncode
         if not staged.is_file():
             raise SafeInputError('Codex 검토 결과 파일이 없습니다.')
         # Exclusive publish also protects two invocations that passed validation together.
@@ -651,8 +688,9 @@ def security_software(applications=Path('/Applications'), launch_daemons=Path('/
 def diag(a):
     lines = ['보내기 전에 직접 읽어 보세요', 'AI 작업실 진단: 파일 내용·폴더 목록·계정 정보는 수집하지 않습니다.',
              '사용자 <USER> / 컴퓨터 <COMPUTER> / 홈 <HOME>',
-             'OS: ' + platform.system() + ' ' + platform.release()]
-    for name in ('claude', 'codex', 'git', 'node', 'python', 'winget', 'pwsh'):
+             'OS: ' + platform.system() + ' ' + platform.release(),
+             'python3: ' + os.environ.get('EK_PYTHON_DESCRIPTION', 'python3 ' + platform.python_version())]
+    for name in ('claude', 'codex', 'git', 'node', 'winget', 'pwsh'):
         code, output = command([name, '--version'])
         match = re.search(r'(?<![\d.])\d+(?:\.\d+){1,4}(?![\d.])', output)
         lines.append(name + ': ' + (match.group() if match else ('없음' if code is None else '버전 확인 불가')))

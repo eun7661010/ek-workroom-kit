@@ -1,4 +1,4 @@
-# 원장님 AI 작업실 원격 세팅 키트 v0.2.2
+# 원장님 AI 작업실 원격 세팅 키트 v0.2.3
 
 학원 원장 PC의 Claude Code·Codex CLI와 개인정보 없는 작업실을 준비하는 키트입니다. Claude가 초안을 만들고 Codex가 읽기 전용으로 교차 검토합니다. HTML→PDF와 HWPX 텍스트 추출은 정해진 스크립트로 실행합니다. 고객 본인 AI가 작업하고 판매자는 Zoom 작업 창으로 감독합니다.
 
@@ -8,7 +8,7 @@
 - [세션 콘솔](console/session-console.md)
 - [사전 설문](console/intake-survey.md)
 
-부트스트랩은 해시 검증·키트 고정 위치 배치 → Claude Code 확인/공식 설치 → Codex CLI 확인/공식 설치 → 진단의 4단계입니다. 기본은 DryRun이고 승인한 Apply만 설치합니다. Codex 설치 실패 시 Claude를 유지하고 미완료를 표시합니다. Node·Python·Git을 설치하지 않으며 관리자 권한을 요구하지 않습니다. Mac 실행기는 기존 Python 3가 필요합니다.
+부트스트랩은 해시 검증·키트 고정 위치 배치 → Claude Code 확인/공식 설치 → Codex CLI 확인/공식 설치 → 진단의 4단계입니다. 기본은 DryRun이고 승인한 Apply만 설치합니다. Codex 설치 실패 시 Claude를 유지하고 미완료를 표시합니다. Node·Python·Git을 설치하지 않으며 관리자 권한을 요구하지 않습니다. Mac은 Apple 공식 개발 도구(Command Line Tools)의 Python 3.9 이상을 사용합니다. 없으면 D-1에 안내 후 종료 코드 4로 멈추며, 고객이 직접 `xcode-select --install`로 설치하고 판매자 블록을 다시 붙여 넣습니다. 기존 Homebrew Python 3.9 이상도 사용할 수 있습니다. Windows는 Python이 필요 없습니다.
 
 부트스트랩이 출력한 **고정 키트 절대 경로**를 사용합니다.
 ```text

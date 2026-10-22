@@ -41,6 +41,13 @@ try {
     foreach ($dir in @($env:USERPROFILE,$env:CLAUDE_CONFIG_DIR,$env:CODEX_HOME,$env:TEMP)) { $null = New-Item -ItemType Directory -Path $dir -Force }
     $scripts = Join-Path $root 'plugins/ek-workroom/scripts'
 
+    $python39 = Run-Python "$PSScriptRoot/test_python39_compat.py" @()
+    Check ($python39.Code -eq 0) 'Python 3.9 제품·테스트·bootstrap 문법/API 호환 검사'
+    Write-Host $python39.Output
+    $macPython = Run-Python "$PSScriptRoot/test_mac_python_detection.py" @($run)
+    Check ($macPython.Code -eq 0) 'Mac python3 공통 감지·CLT 창 방지·안내·종료 코드'
+    Write-Host $macPython.Output
+
     foreach ($file in @(Get-ChildItem -LiteralPath $root -Filter '*.ps1' -File -Recurse | Where-Object { $_.FullName -notlike "$root\.tmp\*" })) {
         $tokens = $null; $errors = $null
         $null = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$errors)
@@ -118,6 +125,10 @@ try {
     $end = Run-PS "$scripts/ek-end-check.ps1" @('-TargetHome',$env:USERPROFILE)
     Check ($end.Code -eq 0 -and $end.Output -match 'OpenSSH' -and $end.Output -match 'Tailscale' -and $end.Output -match '남은 원격 접속') '종료 점검 읽기 전용 결과'
 
+    $timeoutTests = Run-Python "$PSScriptRoot/test_codex_timeout.py" @($run)
+    Check ($timeoutTests.Code -eq 0) 'Codex Windows/Mac 제한 시간·실제 하위 프로세스 종료'
+    Write-Host $timeoutTests.Output
+
     $mac = Run-Python "$PSScriptRoot/test_mac_engine.py" @($run)
     Check ($mac.Code -eq 0) 'Mac 공통 엔진 가짜 홈 병합·백업·멱등·진단'
     Write-Host $mac.Output
@@ -138,7 +149,7 @@ try {
     Write-Host $extra.Output
 
     $newTests = Run-Python "$PSScriptRoot/test_v020.py" @($run)
-    Check ($newTests.Code -eq 0) 'v0.2.2 실행 도구·대상 경계·도구 없는 CLI 시험'
+    Check ($newTests.Code -eq 0) 'v0.2.3 실행 도구·대상 경계·도구 없는 CLI 시험'
     Write-Host $newTests.Output
     $customerTests = Run-Python "$PSScriptRoot/test_customer_skills.py" @($run)
     Check ($customerTests.Code -eq 0) '고객 스킬 10개·고정 템플릿·실제 Edge 조판 검증'
@@ -167,7 +178,7 @@ try {
         Check ($LASTEXITCODE -eq 0) ('claude plugin validate: ' + $(if ($path -eq $root) { 'marketplace' } else { 'plugin' }))
         Write-Host $validation
     }
-    Write-Host 'SKIP 플러그인 설치: 이번 v0.2.2 작업의 설치 금지 지시에 따라 validate와 정적 목록만 확인했습니다.'
+    Write-Host 'SKIP 플러그인 설치: 이번 v0.2.3 작업의 설치 금지 지시에 따라 validate와 정적 목록만 확인했습니다.'
 } catch {
     $failures.Add('테스트 실행 예외')
     Write-Host ('FAIL 테스트 예외: ' + $_.Exception.Message)

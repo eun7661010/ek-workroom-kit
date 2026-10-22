@@ -1,7 +1,49 @@
 #!/usr/bin/env bash
 # 먼저 메신저 붙여넣기 블록에서 이 파일의 SHA256을 확인합니다.
 set -euo pipefail
-source_value=''; expected=''; target_home="${HOME:-}"; version='0.2.2'; apply=0; dry_run=0; prepare_only=0
+# BEGIN MAC PYTHON COMMON
+#!/usr/bin/env bash
+# Mac Python 감지 정본. bootstrap의 내장 사본과 테스트로 일치를 확인합니다.
+ek_python_install_guidance() {
+  printf '%s\n' "Mac에 Apple 개발 도구가 필요합니다. 터미널에 \`xcode-select --install\`을 입력하고 뜨는 창에서 '설치'를 누르세요(약 10분, Apple 공식). 끝나면 판매자가 보낸 블록을 다시 붙여 넣으세요." >&2
+}
+
+ek_detect_python() {
+  EK_PYTHON=''
+  EK_PYTHON_DESCRIPTION='없음(설치 필요)'
+  local candidate developer_dir version_text major minor patch label
+  candidate=$(command -v python3 2>/dev/null) || return 1
+  label='python3'
+  if [ "$candidate" = '/usr/bin/python3' ]; then
+    # CLT 미설치 Mac의 /usr/bin/python3는 실행만 해도 설치 창을 띄웁니다.
+    developer_dir=$(xcode-select -p 2>/dev/null) || return 1
+    candidate="$developer_dir/usr/bin/python3"
+    [ -f "$candidate" ] && [ -x "$candidate" ] || return 1
+    label='Apple 개발 도구'
+  fi
+  [ -f "$candidate" ] && [ -x "$candidate" ] || return 1
+  version_text=$("$candidate" --version 2>/dev/null) || return 1
+  if [[ "$version_text" =~ ^Python[[:space:]]+([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+    major=${BASH_REMATCH[1]}; minor=${BASH_REMATCH[2]}; patch=${BASH_REMATCH[3]}
+  else
+    return 1
+  fi
+  if [ "$major" -lt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -lt 9 ]; }; then
+    return 1
+  fi
+  EK_PYTHON="$candidate"
+  EK_PYTHON_DESCRIPTION="$label $major.$minor.$patch"
+  export EK_PYTHON EK_PYTHON_DESCRIPTION
+}
+
+ek_require_python() {
+  if ek_detect_python; then return 0; fi
+  ek_python_install_guidance
+  return 4
+}
+# END MAC PYTHON COMMON
+ek_require_python || exit 4
+source_value=''; expected=''; target_home="${HOME:-}"; version='0.2.3'; apply=0; dry_run=0; prepare_only=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --source) source_value=$2; shift 2 ;;
@@ -15,11 +57,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 [ -n "$source_value" ] && [ -n "$expected" ] && [ -n "$target_home" ] || { printf '%s\n' '키트 위치·SHA256·홈 경로를 확인하세요.'; exit 2; }
-command -v python3 >/dev/null 2>&1 || { printf '%s\n' '안전한 압축 검증에 필요한 기존 python3가 없습니다. 설치하지 말고 판매자에게 알려 주세요.'; exit 1; }
 [ "$dry_run" -eq 0 ] || apply=0
 prepare=$apply; [ "$prepare_only" -eq 0 ] || prepare=1
 [ "$dry_run" -eq 0 ] || prepare=0
-python3 - "$source_value" "$expected" "$prepare" "$target_home" "$version" "$0" <<'PY'
+"$EK_PYTHON" - "$source_value" "$expected" "$prepare" "$target_home" "$version" "$0" <<'PY'
 import hashlib, os, pathlib, re, shutil, stat, sys, tempfile, urllib.request, zipfile
 source_value, expected, prepare, home, version, script = sys.argv[1:]
 expected = expected.lower(); prepare = prepare == '1'
@@ -122,11 +163,12 @@ except SystemExit: raise
 except Exception:
     stop('검증 또는 준비를 마치지 못했습니다. 설치하지 말고 판매자와 확인하세요.')
 PY
+printf 'python3: %s\n' "$EK_PYTHON_DESCRIPTION"
 printf '%s\n' '[계획 1/4] 받은 키트를 검증하고 버전별 고정 위치에 준비합니다.' \
   '[계획 2/4] Claude Code가 없을 때만 공식 HTTPS 설치 파일을 받아 별도 bash로 실행합니다.' \
   '[계획 3/4] Codex CLI가 없을 때만 공식 HTTPS 설치 파일을 별도 bash로 실행하고 버전을 확인합니다.' \
   '[계획 4/4] 고객 본인이 직접 로그인하고 읽기 전용 진단 파일을 확인합니다. 비밀번호·인증 코드를 전달하지 마세요.' \
-  'Node·Python 설치와 업그레이드, 사용자 settings 변경은 하지 않습니다.'
+  'Node·Python 설치와 업그레이드, 사용자 settings 변경은 하지 않습니다. Mac의 Apple 개발 도구는 필요할 때 고객이 직접 설치합니다.'
 if [ "$prepare_only" -eq 1 ] && [ "$dry_run" -eq 0 ]; then exit 0; fi
 if [ "$apply" -ne 1 ]; then printf '%s\n' '[DryRun] 검증과 계획만 마쳤습니다. 설치·압축 해제·설정 변경 없음.'; exit 0; fi
 verified_root="$target_home/ek-workroom/kit-$version"

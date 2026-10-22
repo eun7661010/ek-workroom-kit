@@ -134,7 +134,7 @@ exit $LASTEXITCODE
 '@
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($child))
     $childEnv = @{ EK_CODEX_ARGS_JSON=(ConvertTo-Json -InputObject $arguments -Compress); EK_CODEX_EXE=$codex.Source }
-    $result = Start-EkProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',$encoded) $prompt 0 $childEnv
+    $result = Start-EkProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',$encoded) $prompt (Get-EkCodexReviewTimeout) $childEnv 'Codex 검토가 10분 안에 끝나지 않아 멈췄습니다. 새 터미널에서 codex --version과 로그인을 확인하세요.'
     if ($result.Code -ne 0) { Write-Output 'Codex 검토 실패: 설치·로그인과 검토 요청을 확인하세요.'; exit $result.Code }
     if (-not (Test-Path -LiteralPath $stageOut -PathType Leaf)) { Throw-EkInput 'Codex 결과 파일이 없습니다. 검토를 완료하지 못했습니다.' }
     if (-not (Test-EkWithin (Get-EkProjectedPath $outPath) $reviewReal)) { Throw-EkInput '검토 결과의 실제 저장 경로가 바뀌어 중단합니다.' }

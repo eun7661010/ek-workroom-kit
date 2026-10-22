@@ -1,4 +1,5 @@
-"""v0.2.2 실행 도구 시험. 설치/실제 AI 호출 없이 저장소 .tmp에서만 쓴다."""
+"""v0.2.3 실행 도구 시험. 설치/실제 AI 호출 없이 저장소 .tmp에서만 쓴다."""
+from compat_support import write_text
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
@@ -139,7 +140,7 @@ fakebin = run / 'fake-bin'
 fakebin.mkdir()
 record, prompt_record = run / 'codex-args.json', run / 'codex-stdin.txt'
 stub = fakebin / 'fake-codex.py'
-stub.write_text('''import json, os, sys, time
+write_text(stub, '''import json, os, sys, time
 from pathlib import Path
 cwd=Path(sys.argv[sys.argv.index('-C')+1])
 assert cwd.is_dir() and not list(cwd.iterdir()), 'CWD_NOT_EMPTY'
@@ -282,7 +283,7 @@ race_dir.mkdir()
 race_target = race_dir / 'secret.txt'
 race_target.write_text('SAFE_CONTENT', encoding='utf-8')
 race_runner = run / 'read-race.ps1'
-race_runner.write_text('''function Get-Item {
+write_text(race_runner, '''function Get-Item {
     param([string]$LiteralPath, [switch]$Force)
     $item = Microsoft.PowerShell.Management\\Get-Item -LiteralPath $LiteralPath -Force:$Force
     if ($LiteralPath -eq $env:EK_RACE_TARGET -and -not $script:changed) {
@@ -390,7 +391,7 @@ for fail in (False, True):
     installer = fixture / 'installer.ps1'
     installer.write_text(('exit 7\n' if fail else "[IO.File]::WriteAllText("+q(ready)+",'ready'); exit 0\n"), encoding='utf-8-sig')
     runner = fixture / 'runner.ps1'
-    runner.write_text('. '+q(root / 'bootstrap/bootstrap.ps1')+' -Library\n'+'''
+    write_text(runner, '. '+q(root / 'bootstrap/bootstrap.ps1')+' -Library\n'+'''
 function Get-Command { param($Name,$CommandType,$ErrorAction)
     if($Name -eq 'codex') { if(Test-Path -LiteralPath READY) { return [pscustomobject]@{Source=CODEX} }; return $null }
     Microsoft.PowerShell.Core\\Get-Command @PSBoundParameters
@@ -425,4 +426,4 @@ for name in set(listing.split('\0')) - {''}:
         if word.lower() in text.lower():
             violations.append(name + ': ' + word)
 check(not violations, '삭제 대상 참조 0 (이력 3개 제외): ' + ', '.join(violations))
-print('v0.2.2 실행 도구 검사 완료')
+print('v0.2.3 실행 도구 검사 완료')

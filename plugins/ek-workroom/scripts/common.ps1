@@ -168,7 +168,12 @@ function Assert-EkNewOutput([string]$Path) {
 function ConvertTo-EkArgument([string]$Value) {
     return '"' + [regex]::Replace([regex]::Replace($Value,'(\\*)"','$1$1\"'),'(\\+)$','$1$1') + '"'
 }
-function Start-EkProcess([string]$Executable, [string[]]$Arguments, [string]$InputText = '', [int]$TimeoutSeconds = 120, [hashtable]$EnvironmentVariables = @{}) {
+function Get-EkCodexReviewTimeout {
+    $seconds = 0
+    if ($env:EK_CODEX_REVIEW_TIMEOUT -cmatch '^[0-9]+\z' -and [int]::TryParse($env:EK_CODEX_REVIEW_TIMEOUT, [ref]$seconds) -and $seconds -ge 1 -and $seconds -le 600) { return $seconds }
+    return 600
+}
+function Start-EkProcess([string]$Executable, [string[]]$Arguments, [string]$InputText = '', [int]$TimeoutSeconds = 120, [hashtable]$EnvironmentVariables = @{}, [string]$TimeoutMessage = '실행 시간이 초과되었습니다. 다시 시도하세요.') {
     [Console]::InputEncoding = New-Object Text.UTF8Encoding $false
     $info = New-Object Diagnostics.ProcessStartInfo
     $info.FileName = $Executable
@@ -185,7 +190,7 @@ function Start-EkProcess([string]$Executable, [string[]]$Arguments, [string]$Inp
         $process.StandardInput.Write($InputText); $process.StandardInput.Close()
         if ($TimeoutSeconds -gt 0) { $ended = $process.WaitForExit($TimeoutSeconds * 1000) }
         else { $process.WaitForExit(); $ended = $true }
-        if (-not $ended) { $process.Kill(); $process.WaitForExit(); Throw-EkInput '실행 시간이 초과되었습니다. 다시 시도하세요.' }
+        if (-not $ended) { $null = & taskkill.exe /T /F /PID $process.Id 2>$null; $process.WaitForExit(); Throw-EkInput $TimeoutMessage }
         $process.WaitForExit()
         # 자식이 상속한 파이프를 계속 열고 있어도 완료된 부모를 붙잡지 않습니다.
         $capturedOut = if ($stdout.IsCompleted -and -not $stdout.IsFaulted) { $stdout.Result } else { '' }

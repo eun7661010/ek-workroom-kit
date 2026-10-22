@@ -1,4 +1,5 @@
-"""v0.2.2 회귀. 외부 다운로드·설치는 모두 가짜로 대체한다."""
+"""v0.2.3 회귀. 외부 다운로드·설치는 모두 가짜로 대체한다."""
+from compat_support import write_text
 import hashlib
 import importlib.util
 import json
@@ -68,7 +69,7 @@ private = '은광 원장 010.1234.5678 02-123-4567 0507-1234-5678 10.20.30.40 20
 masked = engine.mask_text(private, home, user='은광', computer='원장')
 check(all(x not in masked for x in private.split()), 'Mac 엔진 두 글자·전화·IPv6 마스킹')
 
-archive = release / 'ek-workroom-0.2.2.zip'
+archive = release / 'ek-workroom-0.2.3.zip'
 with zipfile.ZipFile(archive) as z:
     check(z.testzip() is None, '릴리스 ZIP 무결성')
     for name in z.namelist():
@@ -97,9 +98,9 @@ fixture = work / 'paste-fixture'
 (fixture / '.claude-plugin/marketplace.json').write_text('{}', encoding='utf-8')
 (fixture / 'bootstrap').mkdir()
 stub_ps = fixture / 'bootstrap/bootstrap.ps1'
-stub_ps.write_text("param($Source,$ExpectedSha256,$Version,[switch]$DryRun)\nWrite-Output 'PASTE_STUB_DRYRUN'\nexit 0\n", encoding='utf-8-sig', newline='\r\n')
+write_text(stub_ps, "param($Source,$ExpectedSha256,$Version,[switch]$DryRun)\nWrite-Output 'PASTE_STUB_DRYRUN'\nexit 0\n", encoding='utf-8-sig', newline='\r\n')
 stub_sh = fixture / 'bootstrap/bootstrap.sh'
-stub_sh.write_text("#!/usr/bin/env bash\necho PASTE_STUB_DRYRUN\n", encoding='utf-8', newline='\n')
+write_text(stub_sh, "#!/usr/bin/env bash\necho PASTE_STUB_DRYRUN\n", encoding='utf-8', newline='\n')
 paste_release = work / 'paste-release'
 built = run(ps + ['-File', str(root / 'bootstrap/make-release.ps1'), '-SourceDirectory', str(fixture), '-OutputDirectory', str(paste_release), '-ReleaseBaseUrl', 'https://release.example.test/kit'])
 check(built.returncode == 0, '붙여넣기 블록 fixture 릴리스')
@@ -113,12 +114,12 @@ for mismatch in (False, True):
         sh_source.write_text('echo SHOULD_NOT_RUN\n', encoding='utf-8')
     wrapper = work / ('paste-wrong.ps1' if mismatch else 'paste-good.ps1')
     mock = "function Invoke-WebRequest { param($Uri,$OutFile,[switch]$UseBasicParsing); Copy-Item -LiteralPath '" + str(ps_source).replace("'", "''") + "' -Destination $OutFile }\n"
-    wrapper.write_text(mock + (paste_release / 'paste-block-windows.txt').read_text(encoding='utf-8-sig'), encoding='utf-8-sig', newline='\r\n')
+    write_text(wrapper, mock + (paste_release / 'paste-block-windows.txt').read_text(encoding='utf-8-sig'), encoding='utf-8-sig', newline='\r\n')
     result = run(ps + ['-File', str(wrapper)])
     check((result.returncode != 0 and b'SHOULD_NOT_RUN' not in result.stdout) if mismatch else (result.returncode == 0 and b'PASTE_STUB_DRYRUN' in result.stdout), 'Windows 붙여넣기 ' + ('불일치 중단' if mismatch else '자동 검증 후 DryRun'))
     bash_wrapper = work / ('paste-wrong.sh' if mismatch else 'paste-good.sh')
     mock = 'curl() { local out=""; while [ "$#" -gt 0 ]; do if [ "$1" = "-o" ]; then out=$2; shift 2; else shift; fi; done; cp ' + shlex.quote(sh_source.as_posix()) + ' "$out"; }\n'
-    bash_wrapper.write_text(mock + (paste_release / 'paste-block-mac.txt').read_text(encoding='utf-8'), encoding='utf-8', newline='\n')
+    write_text(bash_wrapper, mock + (paste_release / 'paste-block-mac.txt').read_text(encoding='utf-8'), encoding='utf-8', newline='\n')
     bash_env = dict(env, HOME=(work / ('mac-paste-wrong' if mismatch else 'mac-paste-good')).as_posix())
     result = run([bash_exe, str(bash_wrapper)], env=bash_env)
     check((result.returncode != 0 and b'SHOULD_NOT_RUN' not in result.stdout) if mismatch else (result.returncode == 0 and b'PASTE_STUB_DRYRUN' in result.stdout), 'Mac 붙여넣기 ' + ('불일치 중단' if mismatch else '자동 검증 후 DryRun'))
@@ -129,6 +130,6 @@ mac_home.mkdir()
 digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 args = [bash_exe, str(root / 'bootstrap/bootstrap.sh'), '--source', str(archive), '--expected-sha256', digest, '--home', str(mac_home), '--prepare-only']
 result = run(args)
-check(result.returncode == 0 and (mac_home / 'ek-workroom/kit-0.2.2/.claude-plugin/marketplace.json').exists(), 'Mac 진입점 고정 경로 준비만 실행')
+check(result.returncode == 0 and (mac_home / 'ek-workroom/kit-0.2.3/.claude-plugin/marketplace.json').exists(), 'Mac 진입점 고정 경로 준비만 실행')
 check(run(args).returncode != 0, 'Mac 진입점 같은 위치 재실행 거부')
-print('v0.2.2 Python 회귀 완료')
+print('v0.2.3 Python 회귀 완료')

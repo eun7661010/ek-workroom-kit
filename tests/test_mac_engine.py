@@ -1,3 +1,4 @@
+from compat_support import write_text
 import importlib.util
 import contextlib
 import io
@@ -256,7 +257,7 @@ for raw in (b'\xff\xfe', b'{"context_window":{"used_percentage":NaN}}',
     result = invoke('statusline', stdin=raw)
     assert result.returncode == 0 and result.stdout.decode('utf-8').strip() == 'AI 작업실'
 
-# subprocess를 가짜 실행기로 바꿔 실제 Codex 호출 없이 고정 인자와 경계를 검사합니다.
+# Codex 실행 함수를 바꿔 실제 Codex 호출 없이 고정 인자와 경계를 검사합니다.
 brief = workspace_dir / '검토/brief.md'
 brief.write_text('목표: 더미 초안만 검토', encoding='utf-8')
 review_out = workspace_dir / '검토/result.md'
@@ -271,7 +272,7 @@ def fake_codex(args, **kwargs):
 target = workspace_dir / '결과/검토 초안.md'
 target.write_text('전달할 초안 내용', encoding='utf-8')
 review_args = SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out), target=[str(target)])
-with patch.object(module.shutil, 'which', return_value='fake-codex'), patch.object(module.subprocess, 'run', fake_codex):
+with patch.object(module.shutil, 'which', return_value='fake-codex'), patch.object(module, 'run_codex', fake_codex):
     assert module.codex_review(review_args) == 0
 args, options = calls[0]
 assert args[args.index('--sandbox') + 1] == 'read-only' and args[-1] == '-'
@@ -306,7 +307,7 @@ clean_brief = brief.read_text(encoding='utf-8')
 for forbidden in (str(student).upper(), str(student).replace('\\', '/'),
                   str(student).replace('/', '\\'), student.name.upper()):
     brief.write_text('검토 대상: ' + forbidden, encoding='utf-8')
-    with patch.object(module.subprocess, 'run', side_effect=AssertionError('Codex 호출 금지')):
+    with patch.object(module, 'run_codex', side_effect=AssertionError('Codex 호출 금지')):
         try:
             module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out.with_name('protected.md')), target=[str(target)]))
             assert False, forbidden
@@ -324,7 +325,7 @@ brief.write_text(clean_brief, encoding='utf-8')
 for bad_metadata in ({}, {'schemaVersion': 1, 'paths': []}, {'schemaVersion': 1, 'paths': ['']},
                      {'schemaVersion': 1, 'paths': [123]}, {'schemaVersion': 1, 'paths': ['relative']}):
     protected_file.write_text(json.dumps(bad_metadata), encoding='utf-8')
-    with patch.object(module.subprocess, 'run', side_effect=AssertionError('Codex 호출 금지')):
+    with patch.object(module, 'run_codex', side_effect=AssertionError('Codex 호출 금지')):
         try:
             module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out.with_name('invalid.md')), target=[str(target)]))
             assert False, bad_metadata
@@ -332,7 +333,7 @@ for bad_metadata in ({}, {'schemaVersion': 1, 'paths': []}, {'schemaVersion': 1,
             pass
 protected_file.unlink()
 try:
-    with patch.object(module.subprocess, 'run', side_effect=AssertionError('Codex 호출 금지')), contextlib.redirect_stdout(io.StringIO()) as guidance:
+    with patch.object(module, 'run_codex', side_effect=AssertionError('Codex 호출 금지')), contextlib.redirect_stdout(io.StringIO()) as guidance:
         assert module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out.with_name('missing-protection.md')), target=[str(target)])) == 2
     assert '작업실 만들기(ek-mode)를 먼저 하세요' in guidance.getvalue()
 finally:
@@ -359,7 +360,7 @@ large.write_bytes(b'x' * (200 * 1024 + 1))
 invalid_utf8 = workspace_dir / '결과/invalid.txt'
 invalid_utf8.write_bytes(b'\xff')
 for bad in (protected_target, protected_alias / 'private.md', hidden / 'brief.md', unsupported, large, invalid_utf8):
-    with patch.object(module.subprocess, 'run', side_effect=AssertionError('Codex 호출 금지')):
+    with patch.object(module, 'run_codex', side_effect=AssertionError('Codex 호출 금지')):
         try:
             module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(brief), out=str(review_out.with_name('blocked.md')), target=[str(bad)]))
             assert False, str(bad)
@@ -408,7 +409,7 @@ large_brief.write_bytes(b'x' * (200 * 1024 + 1))
 invalid_brief = brief.with_name('invalid-utf8.md')
 invalid_brief.write_bytes(b'\xff')
 for bad in (hidden_brief, large_brief, invalid_brief):
-    with patch.object(module.subprocess, 'run', side_effect=AssertionError('Codex 호출 금지')):
+    with patch.object(module, 'run_codex', side_effect=AssertionError('Codex 호출 금지')):
         try:
             module.codex_review(SimpleNamespace(workspace=str(workspace_dir), brief=str(bad), out=str(brief.with_name('invalid-result.md')), target=[str(target)]))
             assert False, str(bad)
@@ -478,7 +479,7 @@ unusual_brief = unusual_workspace / '검토/brief.md'
 unusual_brief.write_text(clean_brief, encoding='utf-8')
 unusual_target = unusual_workspace / '결과/초안.md'
 unusual_target.write_text('특수 경로 초안', encoding='utf-8')
-with patch.object(module.shutil, 'which', return_value='fake-codex'), patch.object(module.subprocess, 'run', fake_codex):
+with patch.object(module.shutil, 'which', return_value='fake-codex'), patch.object(module, 'run_codex', fake_codex):
     assert module.codex_review(SimpleNamespace(workspace=str(unusual_workspace), brief=str(unusual_brief), out=str(unusual_brief.with_name('result.md')), target=[str(unusual_target)])) == 0
 assert calls[-1][0][calls[-1][0].index('-C') + 1] != str(unusual_workspace.resolve())
 print('PASS Mac codex-review: 둥근 따옴표·달러·백틱·세미콜론 경로를 인자 배열로 유지')
@@ -498,7 +499,7 @@ def racing_review():
         return 'created'
     except FileExistsError:
         return 'preserved'
-with patch.object(module.shutil, 'which', return_value='fake-codex'), patch.object(module.subprocess, 'run', fake_racing_codex):
+with patch.object(module.shutil, 'which', return_value='fake-codex'), patch.object(module, 'run_codex', fake_racing_codex):
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(racing_review) for _ in range(2)]
         outcomes = [future.result(timeout=15) for future in futures]
@@ -749,7 +750,7 @@ assert any(str(student.resolve()).replace('\\', '/') in rule.replace('\\', '/') 
 alias_review = SimpleNamespace(workspace=str(aliased_workspace), brief=str(aliased_workspace / '검토/brief.md'),
                                out=str(aliased_workspace / '검토/alias-result.md'),
                                target=[str(aliased_workspace / '결과/검토 초안.md')])
-with patch.object(module.shutil, 'which', return_value='fake-codex'), patch.object(module.subprocess, 'run', fake_codex):
+with patch.object(module.shutil, 'which', return_value='fake-codex'), patch.object(module, 'run_codex', fake_codex):
     assert module.codex_review(alias_review) == 0
 alias_staged = Path(calls[-1][0][calls[-1][0].index('-o') + 1])
 assert alias_staged.parent.parent != Path(alias_review.brief).parent
@@ -757,7 +758,7 @@ assert alias_staged.parent.parent.resolve() == Path(alias_review.brief).parent.r
 assert alias_staged.parent.name.startswith('.ek-review-') and not alias_staged.parent.exists()
 assert calls[-1][1]['input'] == options['input']
 for bad in (ancestor / 'student/private.md', aliased_workspace / '결과/student-alias/private.md'):
-    with patch.object(module.subprocess, 'run', side_effect=AssertionError('Codex 호출 금지')):
+    with patch.object(module, 'run_codex', side_effect=AssertionError('Codex 호출 금지')):
         try:
             module.codex_review(SimpleNamespace(**dict(vars(alias_review), target=[str(bad)],
                                                        out=str(aliased_workspace / '검토/alias-blocked.md'))))
@@ -794,9 +795,9 @@ if bash:
         marker = home / '.local/bin/claude'
         marker.write_bytes(b'CLAUDE_KEEP')
         fake_installer = home / 'fake-install.sh'
-        fake_installer.write_text("#!/usr/bin/env bash\nif [ \"$FAKE_INSTALL_EXIT\" -ne 0 ]; then exit \"$FAKE_INSTALL_EXIT\"; fi\nprintf '#!/usr/bin/env bash\\necho codex-cli 0.2.0\\n' > \"$target_home/.local/bin/codex\"\nchmod +x \"$target_home/.local/bin/codex\"\nexit 0\n", encoding='utf-8', newline='\n')
+        write_text(fake_installer, "#!/usr/bin/env bash\nif [ \"$FAKE_INSTALL_EXIT\" -ne 0 ]; then exit \"$FAKE_INSTALL_EXIT\"; fi\nprintf '#!/usr/bin/env bash\\necho codex-cli 0.2.0\\n' > \"$target_home/.local/bin/codex\"\nchmod +x \"$target_home/.local/bin/codex\"\nexit 0\n", encoding='utf-8', newline='\n')
         wrapper = home / 'test-install.sh'
-        wrapper.write_text('set -euo pipefail\n' +
+        write_text(wrapper, 'set -euo pipefail\n' +
             'export target_home=' + shlex.quote(home.as_posix()) + '\nverified_root="$target_home"\n' +
             'command() { if [ "$1" = "-v" ] && [ "$2" = "codex" ]; then [ -x "$target_home/.local/bin/codex" ]; else builtin command "$@"; fi; }\n' +
             'codex() { "$target_home/.local/bin/codex" "$@"; }\n' +
