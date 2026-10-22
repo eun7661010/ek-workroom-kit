@@ -144,6 +144,10 @@ try {
     Check ($pdfTests.Code -eq 0) 'HTTP 서버 격리·실제 Edge PDF·비밀 이미지 차단'
     Write-Host $pdfTests.Output
 
+    $guidebookTests = Run-Python "$PSScriptRoot/test_guidebook.py" @($run)
+    Check ($guidebookTests.Code -eq 0) '사용 설명서 원문 대조·Edge PDF·덮어쓰기 거부·인쇄 검증'
+    Write-Host $guidebookTests.Output
+
     $leaks = @()
     foreach ($file in @(Get-ChildItem "$root/plugins" -File -Recurse)) {
         $raw = [IO.File]::ReadAllText($file.FullName)
