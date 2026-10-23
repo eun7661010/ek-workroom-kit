@@ -133,7 +133,7 @@ def main():
                      '--expected-sha256', digest, '--home', str(case / 'home'), '--dry-run'], env)
     assert result.returncode == 0, (result.stdout, result.stderr)
     assert 'python3: Apple 개발 도구 3.9.6' in result.stdout, result.stdout
-    assert not (case / 'home/ek-workroom/kit-0.2.3').exists()
+    assert not (case / 'home/ek-workroom/kit-0.2.4').exists()
     print('PASS bootstrap DryRun shows selected Apple developer Python version')
     print('Mac python3 detection regression passed (no real Mac developer-tool launcher invoked).')
 

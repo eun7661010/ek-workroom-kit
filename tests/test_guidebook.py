@@ -197,7 +197,7 @@ else:
             print(f'PDF checked: {len(pdf)} pages; problem pages: none (automated)', flush=True)
 
     inspect(output)
-    delivered = GUIDE / 'ek-workroom-guidebook-0.2.3.pdf'
+    delivered = GUIDE / 'ek-workroom-guidebook-0.2.4.pdf'
     check(delivered.is_file(), 'Delivery PDF exists')
     inspect(delivered, render=True)
 

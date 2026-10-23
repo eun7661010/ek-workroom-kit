@@ -40,7 +40,7 @@ try {
     $previewHome=Join-Path $work 'preview-home'
     $output=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root/bootstrap/bootstrap.ps1" -Source $zip -ExpectedSha256 $zipHash -TargetHome $previewHome -DryRun | Out-String
     Assert ($LASTEXITCODE -eq 0 -and $output.IndexOf('[계획 4/4]') -lt $output.IndexOf('계획에 동의하면') -and $output -match '설치 예정 위치' -and $output -match '현재 창') '미리보기 계획 후 Apply·예정 위치·현재 창 안내'
-    Assert (-not(Test-Path (Join-Path $previewHome 'ek-workroom/kit-0.2.3'))) '미리보기 키트 배치·설치 없음'
+    Assert (-not(Test-Path (Join-Path $previewHome 'ek-workroom/kit-0.2.4'))) '미리보기 키트 배치·설치 없음'
     function Invoke-WebRequest { throw (New-Object Net.WebException('fixture TLS',$null,[Net.WebExceptionStatus]::SecureChannelFailure,$null)) }
     $tls=$false; try { Invoke-EkDownload -Uri 'https://example.invalid' -OutFile (Join-Path $work 'never') } catch { $tls=$_.Exception.Message -match '다운로드 실패: HTTPS/TLS' }
     Assert $tls 'TLS 협상 실패 별도 안내'

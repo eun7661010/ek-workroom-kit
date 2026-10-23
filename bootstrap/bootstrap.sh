@@ -43,7 +43,7 @@ ek_require_python() {
 }
 # END MAC PYTHON COMMON
 ek_require_python || exit 4
-source_value=''; expected=''; target_home="${HOME:-}"; version='0.2.3'; apply=0; dry_run=0; prepare_only=0
+source_value=''; expected=''; target_home="${HOME:-}"; version='0.2.4'; apply=0; dry_run=0; prepare_only=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --source) source_value=$2; shift 2 ;;

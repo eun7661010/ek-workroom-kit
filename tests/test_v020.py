@@ -1,4 +1,4 @@
-"""v0.2.3 실행 도구 시험. 설치/실제 AI 호출 없이 저장소 .tmp에서만 쓴다."""
+"""v0.2.4 실행 도구 시험. 설치/실제 AI 호출 없이 저장소 .tmp에서만 쓴다."""
 from compat_support import write_text
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -426,4 +426,4 @@ for name in set(listing.split('\0')) - {''}:
         if word.lower() in text.lower():
             violations.append(name + ': ' + word)
 check(not violations, '삭제 대상 참조 0 (이력 3개 제외): ' + ', '.join(violations))
-print('v0.2.3 실행 도구 검사 완료')
+print('v0.2.4 실행 도구 검사 완료')

@@ -1,4 +1,4 @@
-# 고객 로컬 프로필 v0.2.3
+# 고객 로컬 프로필 v0.2.4
 `example.json`을 고객 로컬의 새 JSON 파일로 복사합니다. `profile.schema.json`과 대조합니다. 데이터 형식 `schemaVersion`은 기존 `0.1`을 유지합니다.
 
 필수 값은 os, securitySoftware, studentDataPaths, workflow(code와 같은 글자의 template)입니다. 학생 경로는 고객만 직접 적고 판매자 AI에 보내지 않습니다. 내용·목록을 읽지 않고 차단 설정에만 사용합니다. 학생 폴더는 실제 존재하는 절대 경로여야 하며 드라이브 루트·홈 전체는 금지합니다.
