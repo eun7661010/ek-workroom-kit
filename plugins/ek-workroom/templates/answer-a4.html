@@ -23,9 +23,27 @@ thead{display:table-header-group}tr{break-inside:avoid}
 img{display:block;max-width:100%;height:auto;margin:3mm 0}
 .page-break{break-before:page}
 .sheet-footer{border-top:1px solid #a9b3bd;padding-top:2mm;font-size:9pt}
+/* 수식 블록: 분수는 분자/분모, 근호는 root-body 전체 범위를 원본과 대조한다. */
+.formula{display:inline-flex;align-items:center;gap:.15em;vertical-align:middle;white-space:nowrap;line-height:1.2;break-inside:avoid}
+.fraction{display:inline-flex;flex-direction:column;text-align:center;vertical-align:middle}
+.numerator{border-bottom:1px solid currentColor;padding:0 .25em .12em}
+.denominator{padding:.12em .25em 0}
+.radical{display:inline-flex;align-items:flex-end}
+.root-sign{font-size:1.2em;line-height:1;margin-right:-.08em;transform:translateY(.04em)}
+.root-body{border-top:1px solid currentColor;padding:.1em .15em 0;line-height:1.1}
+.formula sup,.formula sub{font-size:.7em;line-height:0}
 </style>
 </head>
 <body>
+<!-- 수식용 기존 블록: template 안의 span을 필요한 위치에 복사한다. 기호·범위를 원본과 대조한다. 외부 라이브러리·URL 금지. -->
+<template id="formula-block">
+<span class="formula" role="math" aria-label="분수, 첨자, 근호 표현 예">
+  <span class="fraction"><span class="numerator">a + b</span><span class="denominator">c</span></span>
+  <span>x<sub>1</sub><sup>2</sup> + </span>
+  <span class="radical"><span class="root-sign">√</span><span class="root-body">a + b</span></span>
+</span>
+</template>
+<!-- 한 쪽 초과 문항·해설은 승인된 문단 경계에서 수동 분할한다. 번호와 ‘계속’을 반복하고 .page-break를 사용한다. 표는 행 경계로 나누고 머리글을 반복한다. 그림·답안 칸도 쪽 경계를 확인하고, 한 쪽보다 큰 그림은 승인된 크기나 분할로 맞춘다. -->
 <!-- 학생용과 별도 파일로 저장한다. 이미지·로고는 같은 폴더 또는 하위 폴더 상대 경로만 사용한다. -->
 <header class="sheet-header"><h1>일차방정식 정답·해설</h1><div class="metadata"><span>학원명: 가상 배움학원</span><span>과목: 수학</span><span>단원: 일차방정식</span><span>정답용</span></div></header>
 <main class="answer-only">
