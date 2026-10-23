@@ -3,7 +3,7 @@
 학원 원장 PC의 Claude Code·Codex CLI와 개인정보 없는 작업실을 준비하는 키트입니다. Claude가 초안을 만들고 Codex가 읽기 전용으로 교차 검토합니다. HTML→PDF와 HWPX 텍스트 추출은 정해진 스크립트로 실행합니다. 고객 본인 AI가 작업하고 판매자는 Zoom 작업 창으로 감독합니다.
 
 - [고객 D-1 안내](docs/d-1-guide-customer.md)
-- [판매자 165분 진행표](docs/session-runbook-seller.md)
+- [판매자 185분 진행표](docs/session-runbook-seller.md)
 - [구조·검증·릴리스](docs/README.md)
 - [세션 콘솔](console/session-console.md)
 - [사전 설문](console/intake-survey.md)

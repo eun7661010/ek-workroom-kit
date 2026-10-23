@@ -35,7 +35,7 @@ try {
         foreach ($base in @($env:ProgramFiles,${env:ProgramFiles(x86)},$env:LOCALAPPDATA)) { if ($base) { $candidates += Join-Path $base 'Google/Chrome/Application/chrome.exe' } }
     }
     $browser = $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
-    if (-not $browser) { Write-Output '브라우저가 없습니다. 브라우저에서 열어 인쇄→PDF로 저장하세요.'; exit 2 }
+    if (-not $browser) { Write-Output '지원 브라우저 없음: Chromium Edge 또는 Chrome 필요. Legacy Edge는 자동 PDF를 지원하지 않습니다.'; exit 2 }
     $tempDir = Join-Path ([IO.Path]::GetTempPath()) ('ek-pdf-'+[guid]::NewGuid().ToString('N'))
     $null = [IO.Directory]::CreateDirectory($tempDir)
     $rendered = Join-Path $tempDir 'output.pdf'
@@ -52,18 +52,30 @@ try {
     $info.EnvironmentVariables['EK_PDF_TOKEN'] = $token
     $server = New-Object Diagnostics.Process
     $server.StartInfo = $info
-    $null = $server.Start()
+    try { $null = $server.Start() }
+    catch { $server.Dispose(); $server = $null; Throw-EkInput 'PDF 임시 서버 실행 차단: 보안 프로그램의 차단 기록과 실행 정책을 판매자와 확인하세요.' }
     $serverOut = $server.StandardOutput.ReadToEndAsync(); $serverError = $server.StandardError.ReadToEndAsync()
     $ready = Join-Path $state 'port.txt'
     $started = [Diagnostics.Stopwatch]::StartNew()
     while (-not (Test-Path -LiteralPath $ready)) {
-        if ($server.HasExited -or $started.Elapsed.TotalSeconds -gt 15) { Throw-EkInput 'PDF 임시 서버를 시작하지 못했습니다. 다시 실행하세요.' }
+        if ($server.HasExited -or $started.Elapsed.TotalSeconds -gt 15) { Throw-EkInput 'PDF 임시 서버 시작 실패: localhost 통신·PowerShell 실행의 보안 프로그램 차단 기록을 판매자와 확인하세요.' }
         Start-Sleep -Milliseconds 30
     }
     $port = [int][IO.File]::ReadAllText($ready)
     $url = 'http://127.0.0.1:'+ $port + '/' + $token + '/' + [Uri]::EscapeDataString([IO.Path]::GetFileName($inputPath))
     $result = Start-EkProcess $browser @('--headless','--disable-gpu','--no-first-run','--no-pdf-header-footer','--proxy-server=127.0.0.1:9',('--proxy-bypass-list=<-loopback>;127.0.0.1:'+$port),'--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1','--disable-background-networking','--disable-extensions',('--user-data-dir='+$tempDir),('--print-to-pdf='+$rendered),$url)
     if ($result.Code -ne 0 -or -not (Test-Path -LiteralPath $rendered -PathType Leaf)) { Throw-EkInput 'PDF를 만들지 못했습니다. HTML을 브라우저에서 열어 확인하세요.' }
+    $servedInput = $false
+    $accessLog = Join-Path $state 'access.jsonl'
+    $inputRelative = $htmlReal.Substring($rootReal.TrimEnd('\','/').Length+1).Replace('\','/')
+    if (Test-Path -LiteralPath $accessLog -PathType Leaf) {
+        foreach ($line in [IO.File]::ReadAllLines($accessLog)) {
+            try { $entry = ConvertFrom-Json -InputObject $line }
+            catch { continue }
+            if ($entry.status -eq 200 -and $entry.path -ceq $inputRelative -and -not $entry.outside) { $servedInput = $true }
+        }
+    }
+    if (-not $servedInput) { Throw-EkInput '입력 HTML HTTP 200 제공 기록이 없어 PDF를 저장하지 않았습니다. localhost 통신과 보안 프로그램 차단 기록을 판매자와 확인하세요.' }
     $bytes = [IO.File]::ReadAllBytes($rendered)
     $raw = [Text.Encoding]::GetEncoding(28591).GetString($bytes)
     $pages = [regex]::Matches($raw,'/Type\s*/Page\b').Count

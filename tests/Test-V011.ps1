@@ -97,8 +97,11 @@ try {
     $prepared=Initialize-EkKit -Source $zip -ExpectedSha256 $hash -TargetHome $prepareHome -Version '0.2.3' -Prepare
     $expected=Join-Path $prepareHome 'ek-workroom/kit-0.2.3'
     Assert ($prepared -eq $expected -and (Test-Path "$expected/plugins/ek-workroom/scripts/ek-diag.ps1")) '고정 설치 위치에 검증한 키트만 준비'
-    $already=$false;try { $null=Initialize-EkKit -Source $zip -ExpectedSha256 $hash -TargetHome $prepareHome -Version '0.2.3' -Prepare } catch {$already=$true}
-    Assert $already '같은 고정 위치 재실행 거부'
+    $again=Initialize-EkKit -Source $zip -ExpectedSha256 $hash -TargetHome $prepareHome -Version '0.2.3' -Prepare
+    Assert ($again -eq $expected) '같은 고정 위치 내용 확인값 동일 시 설치 재개 허용'
+    [IO.File]::WriteAllText((Join-Path $expected 'changed.txt'),'changed')
+    $changed=$false;try { $null=Initialize-EkKit -Source $zip -ExpectedSha256 $hash -TargetHome $prepareHome -Version '0.2.3' -Prepare } catch {$changed=$true}
+    Assert $changed '같은 고정 위치 내용 변조 시 덮어쓰기 거부'
 
     $release=Join-Path $work 'release'
     $built=Call-PS "$root/bootstrap/make-release.ps1" @('-OutputDirectory',$release,'-ReleaseBaseUrl','https://release.example.test/kit','-Version','0.2.3')

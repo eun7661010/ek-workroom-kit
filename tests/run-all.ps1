@@ -117,7 +117,9 @@ try {
     [IO.File]::WriteAllText((Join-Path $private 'DummyStudentZZ.txt'),'DummyStudentZZ 010-1234-5678 dummy.student@example.test')
     $diag = Run-PS "$scripts/ek-diag.ps1" @('-TargetHome',$env:USERPROFILE)
     Check ($diag.Code -eq 0) '진단 실행 성공'
-    $diagText = $diag.Output + [IO.File]::ReadAllText((Join-Path $env:USERPROFILE 'ek-diag.txt'))
+    $diagPath = [IO.Path]::GetFullPath((Join-Path $env:USERPROFILE 'ek-diag.txt'))
+    Check ($diag.Output.Contains($diagPath)) '진단 파일 전체 경로 화면 출력'
+    $diagText = (($diag.Output -split '\r?\n' | Where-Object { $_ -notlike '진단 파일 저장 완료*' }) -join "`n") + [IO.File]::ReadAllText($diagPath)
     foreach ($secret in @('PrivateStudentFolderZZ','DummyStudentZZ','010-1234-5678','dummy.student@example.test', (Split-Path $realHome -Leaf),$realHome)) {
         Check (-not $diagText.Contains($secret)) '진단 개인정보·폴더명 누출 0건'
     }
@@ -128,6 +130,12 @@ try {
     $timeoutTests = Run-Python "$PSScriptRoot/test_codex_timeout.py" @($run)
     Check ($timeoutTests.Code -eq 0) 'Codex Windows/Mac 제한 시간·실제 하위 프로세스 종료'
     Write-Host $timeoutTests.Output
+    $windowsTests = Run-Python "$PSScriptRoot/test_windows_findings.py" @($run)
+    Check ($windowsTests.Code -eq 0) 'Windows 종료 서비스 상태·UTF-8 외부 출력 회귀'
+    Write-Host $windowsTests.Output
+    $resumeTests = Run-PS "$PSScriptRoot/test_bootstrap_resume.ps1" @('-RunDirectory',$run)
+    Check ($resumeTests.Code -eq 0) 'bootstrap 같은 내용 재개·변조 거부·TLS 회귀'
+    Write-Host $resumeTests.Output
 
     $mac = Run-Python "$PSScriptRoot/test_mac_engine.py" @($run)
     Check ($mac.Code -eq 0) 'Mac 공통 엔진 가짜 홈 병합·백업·멱등·진단'

@@ -131,5 +131,7 @@ digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 args = [bash_exe, str(root / 'bootstrap/bootstrap.sh'), '--source', str(archive), '--expected-sha256', digest, '--home', str(mac_home), '--prepare-only']
 result = run(args)
 check(result.returncode == 0 and (mac_home / 'ek-workroom/kit-0.2.3/.claude-plugin/marketplace.json').exists(), 'Mac 진입점 고정 경로 준비만 실행')
-check(run(args).returncode != 0, 'Mac 진입점 같은 위치 재실행 거부')
+check(run(args).returncode == 0, 'Mac 진입점 같은 내용이면 설치 재개 허용')
+(mac_home / 'ek-workroom/kit-0.2.3/modified.txt').write_text('modified', encoding='utf-8')
+check(run(args).returncode != 0, 'Mac 진입점 다른 내용이면 재실행 거부')
 print('v0.2.3 Python 회귀 완료')

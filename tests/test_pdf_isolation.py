@@ -325,8 +325,25 @@ else:
     before = hashlib.sha256(good.read_bytes()).hexdigest()
     check(pdf_tool(ROOT / '정상.html', good, BASE / 'overwrite.jsonl').returncode == 1
           and hashlib.sha256(good.read_bytes()).hexdigest() == before, 'PDF 기존 출력 유지')
+# A browser may print its own error page without ever fetching the input HTML.
+fake_script = BASE / 'error-page.py'
+fake_script.write_text('''from pathlib import Path
+import sys
+output = next(a.split('=', 1)[1] for a in sys.argv[1:] if a.startswith('--print-to-pdf='))
+Path(output).write_bytes(b'%PDF-1.4\\n/Type /Page\\n%%EOF')
+''', encoding='utf-8')
+fake_browser = BASE / 'error-page.cmd'
+fake_browser.write_text('@"' + sys.executable + '" "' + str(fake_script) + '" %*\r\n', encoding='utf-8')
+unserved = BASE / 'unserved.pdf'
+result = subprocess.run([PS, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(SCRIPTS / 'ek-pdf.ps1'),
+                         '-Html', str(ROOT / '정상.html'), '-Pdf', str(unserved)],
+                        env=dict(ENV, EK_PDF_BROWSER=str(fake_browser)), capture_output=True, timeout=30)
+check(result.returncode == 1 and not unserved.exists()
+      and 'HTTP 200' in result.stdout.decode('utf-8-sig'),
+      'PDF 오류 페이지 형식이 정상이어도 입력 HTML HTTP 200 기록 없으면 실패')
 missing_env = dict(ENV, EK_PDF_BROWSER=str(BASE / 'absent.exe'))
 missing = subprocess.run([PS, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(SCRIPTS / 'ek-pdf.ps1'),
                           '-Html', str(ROOT / '정상.html'), '-Pdf', str(BASE / 'no-browser.pdf')], env=missing_env, capture_output=True)
-check(missing.returncode == 2, 'PDF 브라우저 없음 종료 2')
+check(missing.returncode == 2 and 'Chromium Edge 또는 Chrome 필요' in missing.stdout.decode('utf-8-sig'),
+      'PDF Legacy Edge만 있거나 지원 브라우저 없음 종료 2·필요 조건 안내')
 check(not list(TEMP.glob('ek-pdf-*')), 'PDF 임시 프로필·서버 상태 정리')

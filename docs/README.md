@@ -11,7 +11,7 @@
 | plugins/ek-workroom/profiles | 비밀값 없는 로컬 프로필 |
 | plugins/ek-workroom/templates | AGENTS·검토 브리프·A~E 업무 실행법 |
 | bootstrap | 해시 검증·공식 CLI 설치·로컬 릴리스 |
-| console | 165분 세션 기록·사전 설문 |
+| console | 185분 세션 기록·사전 설문 |
 | tests/run-all.ps1 | 통합 검증 진입점 |
 
 ## 설치와 업무
@@ -38,7 +38,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests/run-all.ps1
 로컬 ZIP은 `powershell -NoProfile -ExecutionPolicy Bypass -File bootstrap/make-release.ps1 -OutputDirectory .tmp/release-0.2.3 -Version 0.2.3`으로 새 빈 폴더에 만듭니다. 기본 HTTPS 릴리스 URL은 GitHub `https://github.com/eun7661010/ek-workroom-kit/releases/download`를 유지합니다. 버전 태그 `0.2.3` 아래 ZIP·bootstrap 두 파일과 SHA256SUMS를 확인하고 생성된 paste-block-windows.txt / paste-block-mac.txt를 고객 안내에 사용합니다. 만드는 도구는 업로드·외부 전달을 하지 않습니다. 개발 작업의 설치·실제 홈 적용·커밋·push·외부 발송은 금지합니다.
 
 ## 안전과 남은 확인
-Codex 실행기는 경로·인자를 자식 환경의 JSON으로 전달하고 고정 PowerShell 본문에서 읽습니다. npm 실행기에 필요한 변수 splatting과 stdin 파이프를 유지합니다. 반복 가능한 `-Target`(Mac `--target`)으로 파일을 1개 이상 지정합니다. 브리프와 대상은 같은 읽기 루틴으로 열린 핸들의 실제 경로·하드링크 수·숨김 파일과 상위 폴더·크기·UTF-8을 검사합니다. 실제 경로가 작업실 안이고 보호 경로·숨김 폴더 밖인 MD·TXT·HTML·HTM·CSV만 읽으며, 브리프는 작업실의 검토 폴더 안이어야 합니다. 파일당 200KB, 대상 합계 500KB 이하이고 UTF-8 BOM은 허용합니다. 링크 수가 2 이상인 파일은 거부합니다. Mac 상대 경로 계산은 경계 검사와 같은 대소문자·유니코드 정규화 기준을 사용합니다. 브리프의 보호 경로·폴더명 검사는 대소문자·슬래시·NFKC·제로폭 문자를 정규화하는 보조 장치입니다.
+Codex 실행기는 경로·인자를 자식 환경의 JSON으로 전달하고 고정 `.ps1` 파일을 `-File`로 실행해 읽습니다. npm 실행기에 필요한 변수 splatting과 stdin 파이프를 유지합니다. 외부 프로그램이 PowerShell 진입점 출력을 읽을 때는 UTF-8로 해석합니다. 일반 CP949 콘솔 자체를 실패로 판정하지 않습니다. 반복 가능한 `-Target`(Mac `--target`)으로 파일을 1개 이상 지정합니다. 브리프와 대상은 같은 읽기 루틴으로 열린 핸들의 실제 경로·하드링크 수·숨김 파일과 상위 폴더·크기·UTF-8을 검사합니다. 실제 경로가 작업실 안이고 보호 경로·숨김 폴더 밖인 MD·TXT·HTML·HTM·CSV만 읽으며, 브리프는 작업실의 검토 폴더 안이어야 합니다. 파일당 200KB, 대상 합계 500KB 이하이고 UTF-8 BOM은 허용합니다. 링크 수가 2 이상인 파일은 거부합니다. Mac 상대 경로 계산은 경계 검사와 같은 대소문자·유니코드 정규화 기준을 사용합니다. 브리프의 보호 경로·폴더명 검사는 대소문자·슬래시·NFKC·제로폭 문자를 정규화하는 보조 장치입니다.
 
 Codex에는 고정 머리말·브리프·상대 파일 이름과 내용을 stdin으로 전달합니다. 파일·명령·브라우저·앱·플러그인·서브에이전트 등을 포함한 17개 기능을 비활성화하고 `-c mcp_servers={}`로 MCP를 비우며 `-c web_search="disabled"`로 웹 검색을 끕니다. 고정 설정은 비활성 기능 목록 옆에서 관리합니다. `-C`는 작업실 밖의 매번 새로 만든 빈 임시 폴더이며 끝나면 삭제합니다. Codex는 파일·명령·인터넷 도구 없이 전달된 내용만 검토하고 답변 텍스트만 돌려줍니다. 이 구성은 CLI 기능 제한이며 별도 OS 컨테이너는 아닙니다. CLI 버전이 달라지면 기능 비활성화가 유지되는지 리허설에서 확인해야 합니다. 대상 텍스트는 본인 AI에 전송되므로 개인정보·비밀값을 넣지 않습니다.
 
@@ -48,6 +48,8 @@ PDF 검증은 고유한 큰 비밀 PNG를 서버 루트 밖에 두고 img·srcse
 
 Read/Edit deny는 Claude 도구 규칙이며 OS 권한 격리가 아닙니다. 셸·웹·MCP 전체 ask를 유지하고 학생 경로 접근·삭제·이동·외부 전송은 거절합니다. 적용 뒤 `/permissions`와 개인정보 없는 시험 파일 Read/Edit 차단을 확인해야 합니다. 인증은 고객이 화면 공유를 끄고 직접 수행하며 인증 파일을 읽지 않습니다. 원격 종료 점검과 Zoom 공유 종료는 사람이 확인합니다.
 
+Windows 10 자동 PDF는 Chromium Edge 또는 Chrome이 필요합니다. Legacy Edge만 있으면 지원 브라우저 없음으로 안내합니다. PDF 형식·쪽수와 함께 입력 HTML의 HTTP 200 제공 기록을 확인해야 성공입니다. 다운로드 실패와 다운로드 후 실행 차단을 구분하고, 설치·Codex·임시 서버 차단은 Windows 보안·V3·알약의 차단 기록을 고객·PC 관리자가 확인합니다. 보안 기능이나 서버 경계 검사는 완화하지 않습니다.
+
 실제 홈 settings.json과 Codex 설정·인증·AGENTS 파일은 전후 해시를 비교합니다. 이 검사는 다른 세션의 설정 변경도 감지하므로, 설정 변경 작업을 마친 뒤 검증을 실행하고 검증 중에는 다른 세션에서도 해당 파일을 바꾸지 않습니다. 불변 검사가 실패하면 `.tmp/test-<시각>/before.json.protected`와 `after.json.protected`에서 바뀐 파일을 확인합니다. 실제 설정을 되돌리거나 비교 대상에서 제외해 통과시키지 않습니다. 실행 중 세션·로그·SQLite WAL/SHM은 호스트 동작으로 바뀔 수 있어 설정 판정과 분리합니다. 연결 디렉터리는 따라가지 않습니다. 권한·잠금으로 읽을 수 없으면 메타데이터로 비교하며 잠금을 해제하지 않습니다.
 
-A~E 업무 한 개를 완성하고 결과를 열어 검수합니다. 발송·게시·수납 원장 반영은 범위에 없습니다. 165분은 설계 기준입니다. 깨끗한 Windows/Mac 실기, 고객 단독 재실행과 2주 정착 점검은 현장에서 확인할 항목입니다. [이전 검수 판정표](review-v0.1-response.md)와 validation 이력은 변경하지 않습니다.
+A~E 업무 한 개를 완성하고 결과를 열어 검수합니다. 발송·게시·수납 원장 반영은 범위에 없습니다. 185분은 설계 기준입니다. 깨끗한 Windows/Mac 실기, 고객 단독 재실행과 2주 정착 점검은 현장에서 확인할 항목입니다. [이전 검수 판정표](review-v0.1-response.md)와 validation 이력은 변경하지 않습니다.

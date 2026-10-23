@@ -72,11 +72,11 @@ try {
                 } finally { $file.Dispose() }
                 $status = '200 OK'; $contentType = $mime[$ext]; $served = $realRelative.Replace('\','/')
             } catch { }
-            [IO.File]::AppendAllText((Join-Path $state 'access.jsonl'),((@{ status=[int]$status.Substring(0,3); path=$served; outside=$outside } | ConvertTo-Json -Compress)+"`n"),$utf8)
             $response = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 $status`r`nContent-Type: $contentType`r`nContent-Length: $($body.Length)`r`nConnection: close`r`nX-Content-Type-Options: nosniff`r`nContent-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline' data:; font-src 'self' data:; script-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'`r`n`r`n")
             $net.Write($response,0,$response.Length)
             if ($body.Length) { $net.Write($body,0,$body.Length) }
             $net.Flush()
+            [IO.File]::AppendAllText((Join-Path $state 'access.jsonl'),((@{ status=[int]$status.Substring(0,3); path=$served; outside=$outside } | ConvertTo-Json -Compress)+"`n"),$utf8)
         } catch { } finally { $client.Close() }
     }
 } catch { exit 1 }

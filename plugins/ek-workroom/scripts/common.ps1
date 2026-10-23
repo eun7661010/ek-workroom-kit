@@ -1,5 +1,8 @@
 ﻿# Windows PowerShell 5.1 이상. 설정 파일만 읽고 쓰며 학생 폴더는 열지 않습니다.
 $ErrorActionPreference = 'Stop'
+$OutputEncoding = New-Object Text.UTF8Encoding $false
+[Console]::InputEncoding = $OutputEncoding
+[Console]::OutputEncoding = $OutputEncoding
 function ConvertTo-EkMap($Value) {
     if ($null -eq $Value) { return $null }
     if ($Value -is [System.Management.Automation.PSCustomObject]) {

@@ -122,20 +122,10 @@ try {
     # 경로와 인자는 자식 환경의 JSON 데이터로만 전달합니다. 고정 소스에 외부 값을 넣지 않습니다.
     # 브리프는 파이프로, 인자는 변수 splatting으로 넘깁니다. npm의 codex.ps1 실행기는 배열 리터럴을 인자 하나로 받고
     # 파이프 입력만 stdin으로 전달해서, 그냥 호출하면 exec 없이 대화형으로 열려 실패합니다(2026-10-22 실측).
-    $child = @'
-$ErrorActionPreference = 'Stop'
-$OutputEncoding = New-Object Text.UTF8Encoding $false
-[Console]::InputEncoding = $OutputEncoding
-[Console]::OutputEncoding = $OutputEncoding
-$ekArgs = ConvertFrom-Json -InputObject $env:EK_CODEX_ARGS_JSON
-$ekExe = $env:EK_CODEX_EXE
-[Console]::In.ReadToEnd() | & $ekExe @ekArgs
-exit $LASTEXITCODE
-'@
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($child))
     $childEnv = @{ EK_CODEX_ARGS_JSON=(ConvertTo-Json -InputObject $arguments -Compress); EK_CODEX_EXE=$codex.Source }
-    $result = Start-EkProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',$encoded) $prompt (Get-EkCodexReviewTimeout) $childEnv 'Codex 검토가 10분 안에 끝나지 않아 멈췄습니다. 새 터미널에서 codex --version과 로그인을 확인하세요.'
-    if ($result.Code -ne 0) { Write-Output 'Codex 검토 실패: 설치·로그인과 검토 요청을 확인하세요.'; exit $result.Code }
+    Write-Output '검토 중·최대 10분·중복 실행하지 마세요.'
+    $result = Start-EkProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'codex-child.ps1')) $prompt (Get-EkCodexReviewTimeout) $childEnv 'Codex 검토가 10분 안에 끝나지 않아 멈췄습니다. 새 터미널에서 codex --version과 로그인을 확인하세요.'
+    if ($result.Code -ne 0) { Write-Output 'Codex 검토 실패: 설치·로그인·검토 요청과 보안 프로그램 차단 기록을 확인하세요.'; exit $result.Code }
     if (-not (Test-Path -LiteralPath $stageOut -PathType Leaf)) { Throw-EkInput 'Codex 결과 파일이 없습니다. 검토를 완료하지 못했습니다.' }
     if (-not (Test-EkWithin (Get-EkProjectedPath $outPath) $reviewReal)) { Throw-EkInput '검토 결과의 실제 저장 경로가 바뀌어 중단합니다.' }
     Assert-EkNewOutput $outPath
@@ -145,7 +135,7 @@ exit $LASTEXITCODE
         try { $source.CopyTo($dest) } finally { $dest.Dispose() }
     } finally { $source.Dispose() }
     Write-Output ('검토 결과: '+$outPath)
-} catch { Write-Output (Get-EkSafeError $_ 'Codex 검토 실패: 경로와 실행 권한을 확인하세요.'); exit 1 }
+} catch { Write-Output (Get-EkSafeError $_ 'Codex 검토 실패: 경로·실행 권한과 보안 프로그램 차단 기록을 확인하세요.'); exit 1 }
 finally {
     if ($emptyWork -and [IO.Path]::GetFullPath($emptyWork).StartsWith([IO.Path]::GetTempPath(),[StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($emptyWork) -match '^ek-codex-empty-[a-f0-9]{32}$') { Remove-Item -LiteralPath $emptyWork -Recurse -Force -ErrorAction SilentlyContinue }
     if ($tempDir -and [IO.Path]::GetDirectoryName($tempDir) -eq $review -and [IO.Path]::GetFileName($tempDir) -match '^\.ek-review-[a-f0-9]{32}$') { Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue }

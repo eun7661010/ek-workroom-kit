@@ -6,7 +6,7 @@
 
 | ☐ | 무엇 | 어디에 | 누가·어떻게 | 확인 | 통과 기준 |
 |---|---|---|---|---|---|
-| ☐ | Claude Code | `~/.local/bin/claude.exe` (Mac `~/.local/bin/claude`) | 부트스트랩이 공식 설치 파일(`claude.ai/install.ps1`)을 받아 별도 창에서 실행. 관리자 권한 불필요. 설치 뒤 Windows 서명 확인 | `claude --version` | 버전 번호 출력 |
+| ☐ | Claude Code | `~/.local/bin/claude.exe` (Mac `~/.local/bin/claude`) | 부트스트랩이 공식 설치 파일(`claude.ai/install.ps1`)을 별도 프로세스로 실행. 진행 내용은 현재 창에 표시되므로 완료 안내까지 닫지 않음. 관리자 권한 불필요. 설치 뒤 Windows 서명 확인 | PowerShell 창: `claude --version` | 버전 번호 출력 |
 | ☐ | Codex CLI | 공식 설치 위치 | 부트스트랩이 공식 설치 파일(`chatgpt.com/codex/install.ps1`)을 같은 방식으로 실행. 실패해도 Claude는 그대로 두고 "Codex 설치 미완료" 표시 | `codex --version` | 버전 번호 출력 |
 | ☐ | Mac: Apple 개발 도구(고객이 D-1에 직접 설치, 키트는 설치하지 않음) | Apple 공식 Command Line Tools | python3가 없다는 안내가 나오면 고객이 터미널에서 `xcode-select --install` 입력 → 설치(약 10분) → 판매자 블록 다시 붙여넣기 | 진단의 `python3` 줄 | Apple 개발 도구의 python3 3.9.6 또는 기존 python3 3.9 이상 |
 
@@ -16,17 +16,19 @@
 
 | ☐ | 무엇 | 어디에 | 확인 | 통과 기준 |
 |---|---|---|---|---|
-| ☐ | 키트 원본 | `~/ek-workroom/kit-0.2.3/` | 부트스트랩 출력의 "키트 고정 위치" 줄 | 확인값(SHA256) 일치 문구가 먼저 나옴 |
+| ☐ | 키트 원본 | `~/ek-workroom/kit-0.2.3/` | 미리보기의 "설치 예정 위치", 적용 뒤 "키트 배치 완료" 줄의 전체 경로 | 확인값(SHA256) 일치 문구가 먼저 나옴 |
 | ☐ | 진단 파일 | `~/ek-diag.txt` | 고객이 메모장으로 열기 | 이름·이메일·전화번호·홈 경로가 가려져 있음 |
 
 ## 3. Claude Code 플러그인 (1개)
 
 | ☐ | 무엇 | 어떻게 | 확인 | 통과 기준 |
 |---|---|---|---|---|
-| ☐ | `ek-workroom` 플러그인 | `claude plugin marketplace add "<키트 고정 위치>"` → `claude plugin install ek-workroom@ek-workroom` | Claude 안에서 `/plugin` | ek-workroom 0.2.3 사용 중 |
-| ☐ | 스킬 16개 | 플러그인에 포함 | `/ek-workroom:` 입력 후 목록 | 진행용 6개 + 고객용 10개(5절) |
+| ☐ | `ek-workroom` 플러그인 | PowerShell 창에서 `claude plugin marketplace add "<키트 고정 위치>"` → `claude plugin install ek-workroom@ek-workroom` | Claude 입력란에서 `/plugin` | ek-workroom 0.2.3 사용 중 |
+| ☐ | 스킬 16개 | 플러그인에 포함 | Claude 입력란에 `/ek-workroom:` 입력 후 목록 | 진행용 6개 + 고객용 10개(5절) |
 
 이 두 명령은 Claude Code가 자기 설정(`~/.claude/settings.json`의 플러그인 사용 목록, 플러그인 캐시 폴더)에 기록합니다.
+
+PowerShell 창은 `PS C:\...>`가 보이는 명령 창이고 Claude 입력란은 `claude`를 시작한 뒤 나오는 대화 입력칸입니다. 플러그인 설치 두 줄은 별도 PowerShell 창에서 실행한 뒤 Claude 창으로 돌아가 확인합니다. Mac은 PowerShell 대신 터미널을 사용합니다.
 
 ## 4. 바뀌는 설정 (파일 1개: `~/.claude/settings.json`)
 
@@ -35,7 +37,7 @@
 | ☐ | 항목 | 내용 | 적용 스킬 | 확인 | 통과 기준 |
 |---|---|---|---|---|---|
 | ☐ | 백업 | 기존 설정 변경 전 `settings.json.ek-backup-<시각>` 생성. 되돌릴 때 해당 변경 전 백업 내용으로 복원 | ek-safety·ek-mode | 기존 파일을 변경했다면 백업 파일 있음 | 백업은 변경 전 원본과 같음. 같은 설정 재적용은 새 백업 없음 |
-| ☐ | 학생 폴더 읽기·수정 차단 | `permissions.deny`에 `Read(...)`, `Edit(...)`. 입력한 경로와 실제 경로(OneDrive·바로가기 연결을 따라간 경로) 둘 다. Mac 한글은 두 가지 저장 형태 모두 | ek-safety | `/permissions`에 규칙 보임 → 연습 폴더의 `차단확인.txt` 읽기 요청 | **읽기 거부, 수정 거부** |
+| ☐ | 학생 폴더 읽기·수정 차단 | `permissions.deny`에 `Read(...)`, `Edit(...)`. 입력한 경로와 실제 경로(OneDrive·바로가기 연결을 따라간 경로) 둘 다. Mac 한글은 두 가지 저장 형태 모두 | ek-safety | 원장이 개인정보 없는 연습 폴더를 학생 폴더로 지정하고 **그 안에** `차단확인.txt`를 직접 생성 → Claude 입력란의 `/permissions` 규칙 확인 → 해당 파일 읽기·수정 요청 | **읽기 거부, 수정 거부** |
 | ☐ | 명령 실행 승인 | `permissions.ask`에 `Bash`, `PowerShell`, `WebFetch`, `WebSearch`, `mcp__*` | ek-safety | 아무 명령이나 시켜 보기 | 실행 전 승인 창이 뜸 |
 | ☐ | 기본 승인 모드 교체 | `permissions.defaultMode`를 `default`로 설정. 되돌릴 때 변경 전 `settings.json.ek-backup-<시각>` 내용으로 복원 | ek-safety | 설정 파일의 해당 값 확인 | `default` |
 | ☐ | 승인 우회 모드 교체 | `permissions.disableBypassPermissionsMode`를 `disable`로 설정. 되돌릴 때 변경 전 `settings.json.ek-backup-<시각>` 내용으로 복원 | ek-safety | 설정 파일의 해당 값 확인 | `disable` |
@@ -95,12 +97,12 @@
 | 위험 | 막는 방법 |
 |---|---|
 | 받은 파일이 바뀜 | 붙여넣기 블록 안의 확인값과 다르면 키트를 받기 전에 멈춤 |
-| 같은 버전 재실행으로 덮어쓰기 | 고정 위치가 이미 있으면 멈추고 재실행 안내 |
-| 공식 설치 프로그램의 종료가 키트까지 끊음 | 별도 PowerShell 창에서 실행 |
+| 같은 버전 재실행으로 덮어쓰기 | 기존 폴더와 받은 키트의 모든 파일 내용 확인값이 같으면 설치 이어 하기. 다르면 멈추고 판매자가 확인 |
+| 공식 설치 프로그램의 종료가 키트까지 끊음 | 별도 PowerShell 프로세스에서 실행하고 진행 내용은 현재 창에 표시 |
 | 기존 Claude 설정 손실 | 변경 전 백업, 권한 목록 병합, 승인 모드·우회 모드·상태줄 명령은 4절 값으로 교체, 깨진 JSON이면 중단, 한글(CP949)·BOM 파일 읽기 지원 |
 | 한글·공백 들어간 사용자 이름 | 모든 경로를 따옴표로 처리, 실측(`홍 길동`) 통과 |
 | 진단에 개인정보 | 이름·이메일·전화번호·홈 경로 가림, 2글자 한글 이름 포함 |
-| 조판 프로그램 없음 | Windows 기본 Edge 사용. 없으면 "브라우저에서 인쇄→PDF" 안내 |
+| 조판 프로그램 없음 | 자동 PDF에는 Chromium Edge 또는 Chrome 필요. Windows 10의 Legacy Edge만으로는 지원하지 않음. 없으면 고객이 브라우저에서 수동 인쇄하고 PDF 미완료로 기록 |
 | Codex가 파일을 고침 | 항상 `--sandbox read-only`, 결과는 `검토/`의 새 파일로만 |
 | Codex가 학생 폴더를 읽음(Claude 차단은 Codex에 적용 안 됨) | Codex를 셸·브라우저·이미지 보기·MCP 등 **도구를 모두 끈 상태**로 빈 임시 폴더에서 실행. 검토할 파일 내용은 키트가 직접 읽어 넘기며, 실제 경로가 작업실 안이고 학생 폴더(`.ek-workroom/protected-paths.json`) 밖인 파일만 허용. 실측: 도구를 끈 Codex는 작업실 파일도 "열 수 없음" |
 | PDF에 다른 폴더 파일·인터넷 자료가 섞임 | `file://`로 열지 않고 HTML 폴더 하나만 내주는 임시 로컬 서버(127.0.0.1)로 렌더. 브라우저 규칙상 다른 파일을 끌어올 수 없고, 인터넷·스크립트도 끔 |
@@ -112,19 +114,24 @@
 
 | ☐ | 단계 | 기대 화면 |
 |---|---|---|
-| ☐ | 붙여넣기 블록 실행(D-1) | `SHA256 일치` → `키트 고정 위치` → `[DryRun] 검증과 계획만 마쳤습니다` |
-| ☐ | 출력된 `-Apply` 명령 실행 | Claude·Codex 설치(또는 "이미 있음") → 진단 파일 생성 |
-| ☐ | 새 터미널에서 `claude` → 본인 로그인 | 로그인 중 Zoom 공유 끄기. `/status`로 본인 계정 확인 |
-| ☐ | `codex` → 본인 로그인 | 막히면 `codex login --device-auth` |
+| ☐ | PowerShell 창에서 붙여넣기 블록 실행(D-1) | `SHA256 일치` → 설치 예정 위치 → 4단계 계획 → `[DryRun] 검증과 계획만 마쳤습니다` |
+| ☐ | PowerShell 창에서 계획 마지막의 `-Apply` 명령 한 줄 전체 실행 | Claude·Codex 설치(또는 "이미 있음") → 진단 파일 전체 경로 출력. 완료 안내까지 현재 창 유지 |
+| ☐ | 새 PowerShell 창에서 `claude` → 본인 로그인 | 로그인 중 Zoom 공유 끄기. Claude 입력란의 `/status`로 본인 계정 확인 |
+| ☐ | 별도의 새 PowerShell 창 또는 탭에서 `codex` → 본인 로그인 → Claude 창으로 돌아오기 | 막히면 PowerShell 창에서 `codex login --device-auth`. Claude 입력란에 쓰지 않음 |
 | ☐ | Codex 전역 설정이 비었는지 확인 | `~/.codex/`에 `AGENTS.md`·`skills/`가 없고 `config.toml`에 `mcp_servers`가 없음. 있으면 고객이 쓰던 것이니 지우지 말고 판매자와 상의(교차 검토는 MCP를 끄지만 전역 지시문은 읽힐 수 있음) |
-| ☐ | 플러그인 설치 2줄 | `/plugin`에 ek-workroom 0.2.3 |
-| ☐ | `/ek-workroom:ek-safety` | 미리보기 → 승인 → 적용 → Claude 재시작 → 차단 시험 통과 |
-| ☐ | `/ek-workroom:ek-mode` | 상태줄 표시, `~/AI작업실` 생성 |
-| ☐ | 작업실에서 `claude` 다시 열기 → `/ek-workroom:ek-codex-link` | 검토 결과가 `검토/`에 새 파일로 생김 |
-| ☐ | `/ek-workroom:ek-flow` (업무 E 권장: 학습지 PDF) | `결과/`에 학생용·정답용 PDF, 쪽수 출력 |
-| ☐ | `/ek-workroom:ek-handoff` | 단독 재실행 성공, 종료 점검 "남은 원격 접속 없음" |
+| ☐ | PowerShell 창에서 플러그인 설치 2줄 → Claude 창으로 돌아오기 | Claude 입력란의 `/plugin`에 ek-workroom 0.2.3 |
+| ☐ | Claude 입력란에서 `/ek-workroom:ek-start` | 고객 홈·프로필 파일 위치·학생 보호 폴더 확인. 프로필 내용·경로는 고객 로컬에서만 확인 |
+| ☐ | Claude 입력란에서 `/ek-workroom:ek-safety` | 미리보기 → 승인 → 적용 → Claude 재시작 → 학생 폴더로 지정한 연습 폴더 **안에 원장이 만든** 시험 파일 Read/Edit 차단 통과 |
+| ☐ | Claude 입력란에서 `/ek-workroom:ek-mode` | 상태줄 표시, `~/AI작업실` 생성 |
+| ☐ | PowerShell 창에서 작업실로 이동해 `claude` 다시 열기 → Claude 입력란의 `/ek-workroom:ek-codex-link` | 검토 결과가 `검토/`에 새 파일로 생김 |
+| ☐ | Claude 입력란에서 `/ek-workroom:ek-flow` (업무 E 권장: 학습지 PDF) | `결과/`에 학생용·정답용 PDF, 쪽수 출력 |
+| ☐ | Claude 입력란에서 `/ek-workroom:ek-handoff` | 단독 재실행 성공. 실행 중인 원격 서비스·연결은 수동 확인하고 세션에서 새로 만든 연결은 종료. 기존 구성 수동 확인 완료, 설치됨(꺼짐)은 접속 있음과 구분 |
 
 막히면 오류 문구(개인정보 지운 것)와 단계 번호만 기록합니다.
+
+내용 승인은 최소 5회(① 안전 설정 ② 상태줄 ③ 작업실 생성 ④ 검토 요청서 ⑤ 수정본 반영)이며 도구 실행 승인창은 별도입니다. 각 승인 직전에 목적·대상·선택을 읽어 줍니다. 예: **“③ 작업실 생성: 위치·새 파일 목록 확인 후 이번 실행만 허용”**. 전체 세션 허용을 요구하지 않습니다. 콘솔에는 내용 승인과 실제 도구 승인창 수를 따로 기록합니다.
+
+Windows 10 점검: HTTPS는 TLS 1.2를 추가한 프로세스에서 요청합니다. 자동 PDF는 입력 HTML의 HTTP 200 제공 기록이 있어야 성공이며, 서버 시작·통신 차단은 보안 제품 기록과 PC 관리자에게 확인합니다. Codex 자식은 고정 `.ps1`을 `-File`로 실행합니다. 차단되면 보호 기록을 확인하고 보안 기능을 끄지 않습니다. 외부 프로그램이 스크립트 출력을 읽을 때는 UTF-8로 해석합니다. 일반 CP949 콘솔 자체를 실패로 판정하지 않습니다.
 
 ## 10. 원래대로 되돌리기
 

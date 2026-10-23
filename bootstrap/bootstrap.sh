@@ -94,8 +94,9 @@ try:
     # macOS /var·/tmp와 같은 시스템 별칭은 홈 경계에서 정규화합니다.
     base = pathlib.Path(home).resolve() / 'ek-workroom'; destination = base / ('kit-' + version)
     if base.is_symlink(): stop('연결된 설치 경로에는 쓰지 않습니다.')
-    if destination.exists() or destination.is_symlink():
-        stop('같은 버전의 키트 폴더가 이미 있습니다. 덮어쓰지 않습니다. 기존 경로를 사용하고 판매자에게 문의하세요.')
+    exists = destination.exists() or destination.is_symlink()
+    if exists and (not destination.is_dir() or destination.is_symlink()):
+        stop('같은 버전의 키트 위치가 폴더가 아니거나 연결 경로입니다. 판매자와 확인하세요.')
     base.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.staging-', dir=base) as staging:
         staging = pathlib.Path(staging); snapshot = staging / 'kit.zip'; folder = staging / 'content'; cached_source = source_value
@@ -133,7 +134,7 @@ try:
                                 or key in seen or mode == stat.S_IFLNK or info.external_attr & 0x400):
                             stop('안전하지 않거나 중복된 압축 경로입니다.')
                         seen.add(key)
-                    if prepare:
+                    if prepare or exists:
                         folder.mkdir()
                         for info in infos:
                             item = folder.joinpath(*info.filename.replace('\\', '/').split('/'))
@@ -150,25 +151,31 @@ try:
                         with cache.open('xb') as out: shutil.copyfileobj(stream, out)
                     cached_source = str(cache)
         print('SHA256 일치: 받은 키트를 확인했습니다.')
-        print('키트 고정 위치: ' + str(destination))
-        print('세션 플러그인 경로: /plugin marketplace add "' + str(destination) + '"')
+        if exists:
+            if folder_sha(destination) != folder_sha(folder):
+                stop('같은 버전의 키트 폴더 내용 확인값이 다릅니다. 덮어쓰지 않습니다. 판매자와 확인하세요.')
+            print('키트 배치 완료: 기존 키트와 내용 확인값이 같아 설치 이어 하기를 허용합니다.')
+        print('설치 예정 위치: ' + str(destination))
+        print('설치 후 사용할 세션 플러그인 경로: /plugin marketplace add "' + str(destination) + '"')
+        print('[계획 1/4] 받은 키트를 검증하고 버전별 고정 위치에 준비합니다. 기존 폴더는 내용 확인값이 같을 때만 그대로 사용합니다.')
+        print('[계획 2/4] Claude Code가 없을 때만 공식 HTTPS 설치 파일을 받아 별도 bash로 실행합니다.')
+        print('[계획 3/4] Codex CLI가 없을 때만 공식 HTTPS 설치 파일을 별도 bash로 실행하고 버전을 확인합니다.')
+        print('[계획 4/4] 고객 본인이 직접 로그인하고 읽기 전용 진단 파일을 확인합니다. 비밀번호·인증 코드를 전달하지 마세요.')
+        print('설치 진행 내용은 현재 창에 표시됩니다. 완료 안내까지 창을 닫지 마세요.')
+        print('Node·Python 설치와 업그레이드, 사용자 settings 변경은 하지 않습니다. Mac의 Apple 개발 도구는 필요할 때 고객이 직접 설치합니다.')
         if prepare:
             if not (folder / 'plugins/ek-workroom/scripts/ek-diag.sh').is_file(): stop('키트 구조가 맞지 않습니다. 판매자에게 다시 요청하세요.')
-            folder.rename(destination)
+            if not exists: folder.rename(destination)
+            print('키트 배치 완료: ' + str(destination))
         else:
             import shlex
-            print('아래 명령은 설치 동의 후에만 실행하세요. 같은 검증 파일을 사용합니다.')
+            print('계획에 동의하면 다음 한 줄 전체를 복사해 실행하세요. 실패 후에도 같은 명령으로 이어 할 수 있으며, 이미 설치된 CLI는 그대로 사용합니다.')
             print('bash ' + shlex.quote(str(pathlib.Path(script).resolve())) + ' --source ' + shlex.quote(cached_source) + ' --expected-sha256 ' + expected + ' --home ' + shlex.quote(home) + ' --version ' + version + ' --apply')
 except SystemExit: raise
 except Exception:
     stop('검증 또는 준비를 마치지 못했습니다. 설치하지 말고 판매자와 확인하세요.')
 PY
 printf 'python3: %s\n' "$EK_PYTHON_DESCRIPTION"
-printf '%s\n' '[계획 1/4] 받은 키트를 검증하고 버전별 고정 위치에 준비합니다.' \
-  '[계획 2/4] Claude Code가 없을 때만 공식 HTTPS 설치 파일을 받아 별도 bash로 실행합니다.' \
-  '[계획 3/4] Codex CLI가 없을 때만 공식 HTTPS 설치 파일을 별도 bash로 실행하고 버전을 확인합니다.' \
-  '[계획 4/4] 고객 본인이 직접 로그인하고 읽기 전용 진단 파일을 확인합니다. 비밀번호·인증 코드를 전달하지 마세요.' \
-  'Node·Python 설치와 업그레이드, 사용자 settings 변경은 하지 않습니다. Mac의 Apple 개발 도구는 필요할 때 고객이 직접 설치합니다.'
 if [ "$prepare_only" -eq 1 ] && [ "$dry_run" -eq 0 ]; then exit 0; fi
 if [ "$apply" -ne 1 ]; then printf '%s\n' '[DryRun] 검증과 계획만 마쳤습니다. 설치·압축 해제·설정 변경 없음.'; exit 0; fi
 verified_root="$target_home/ek-workroom/kit-$version"
@@ -176,8 +183,13 @@ export PATH="$target_home/.local/bin:$PATH"
 if ! command -v claude >/dev/null 2>&1; then
   installer=$(mktemp "$verified_root/.claude-install-XXXXXXXX")
   trap 'rm -f -- "$installer"' EXIT
-  curl --proto '=https' --proto-redir '=https' -fsSL https://claude.ai/install.sh -o "$installer"
-  bash "$installer"
+  if ! curl --proto '=https' --proto-redir '=https' -fsSL https://claude.ai/install.sh -o "$installer"; then
+    printf '%s\n' '다운로드 실패: 키트 배치 완료 / Claude 설치 미완료. 연결·보안 프로그램 차단 기록을 판매자와 확인한 뒤 같은 --apply 명령으로 이어 하세요.'; exit 1
+  fi
+  if ! bash "$installer"; then
+    printf '%s\n' '공식 설치 파일 실행 실패: 키트 배치 완료 / Claude 설치 미완료. 보안 프로그램 차단 기록을 판매자와 확인한 뒤 같은 --apply 명령으로 이어 하세요.'; exit 1
+  fi
+  rm -f -- "$installer"
   export PATH="$target_home/.local/bin:$PATH"
 else
   printf '%s\n' 'Claude Code가 이미 있어 그대로 사용합니다.'
@@ -204,4 +216,5 @@ else
 fi
 printf '%s\n' '새 터미널에서 claude를 열고 고객 본인이 로그인하세요. 브라우저가 안 열리면 표시된 URL을 직접 열고 나온 코드는 본인 Claude 터미널에 붙여 넣으세요. 판매자는 화면 공유를 잠시 멈춥니다.'
 bash "$verified_root/plugins/ek-workroom/scripts/ek-diag.sh" --home "$target_home" --output "$target_home/ek-diag.txt"
+printf '진단 파일 저장 위치: %s\n' "$target_home/ek-diag.txt"
 printf '%s\n' '진단 파일을 직접 읽고 필요한 마스킹을 확인한 뒤 전달하세요. 자동 전송하지 않습니다.'

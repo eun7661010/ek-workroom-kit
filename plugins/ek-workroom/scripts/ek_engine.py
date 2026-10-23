@@ -713,6 +713,7 @@ def diag(a):
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(result + '\n', encoding='utf-8')
     print(result)
+    print('진단 파일 저장 완료 (화면 안내 전용·파일에는 미포함): ' + str(output.absolute()))
 
 
 def end_check(a):

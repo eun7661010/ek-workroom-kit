@@ -13,12 +13,14 @@ function Get-EkVersion([string]$Name) {
 }
 function Test-EkNetwork([string]$Domain) {
     try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
         $request = [Net.HttpWebRequest]::Create('https://' + $Domain)
         $request.Method = 'HEAD'; $request.Timeout = 4000; $request.AllowAutoRedirect = $false
         $response = $request.GetResponse(); $response.Close(); return '도달함'
     } catch [Net.WebException] {
         if ($_.Exception.Response) { $_.Exception.Response.Close(); return '도달함 (접근 제한 응답)' }
-        return '확인 불가'
+        if ($_.Exception.Status -in @([Net.WebExceptionStatus]::TrustFailure,[Net.WebExceptionStatus]::SecureChannelFailure)) { return 'TLS 협상·인증서 확인 실패 (판매자와 보안 설정 확인)' }
+        return '확인 불가 (네트워크·보안 프로그램 확인)'
     } catch { return '확인 불가' }
 }
 try {
@@ -53,4 +55,5 @@ try {
     $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $fullOutput)
     [IO.File]::WriteAllText($fullOutput,$result,(New-Object Text.UTF8Encoding $true))
     Write-Output $result
+    Write-Output ('진단 파일 저장 완료 (화면 안내 전용·파일에는 미포함): ' + $fullOutput)
 } catch { Write-Output (Get-EkSafeError $_ '진단 실패: 저장 위치 또는 실행 권한을 확인하세요. 원본 오류는 공유하지 마세요.'); exit 1 }

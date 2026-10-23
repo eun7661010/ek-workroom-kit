@@ -80,12 +80,14 @@ try {
     $windows=@'
 & {
     $ErrorActionPreference = 'Stop'
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $ekVersion = '__VERSION__'
     $ekExpected = '__BOOTSTRAP_HASH__'
     $ekFolder = Join-Path $env:USERPROFILE 'ek-workroom'
     $null = New-Item -ItemType Directory -Path $ekFolder -Force
     $ekFile = Join-Path $ekFolder ('bootstrap-' + $ekVersion + '-' + [guid]::NewGuid().ToString('N') + '.ps1')
-    Invoke-WebRequest -UseBasicParsing -Uri '__BASE_URL__/bootstrap.ps1' -OutFile $ekFile
+    try { Invoke-WebRequest -UseBasicParsing -Uri '__BASE_URL__/bootstrap.ps1' -OutFile $ekFile }
+    catch { throw '다운로드 실패: HTTPS/TLS·인터넷 연결과 보안 프로그램 차단 기록을 판매자와 확인하세요.' }
     if ((Get-FileHash -LiteralPath $ekFile -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ekExpected) { throw '파일 확인값이 다릅니다. 실행하지 말고 판매자에게 알려 주세요.' }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ekFile -Source '__BASE_URL__/__ZIP_NAME__' -ExpectedSha256 '__ZIP_HASH__' -Version $ekVersion -DryRun
     if ($LASTEXITCODE -ne 0) { throw '미리보기를 마치지 못했습니다. 판매자와 확인하세요.' }
