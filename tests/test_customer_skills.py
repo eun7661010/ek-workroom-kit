@@ -49,7 +49,9 @@ def static_checks():
               name + ' 계획·승인·생성·열람')
         check('입력:' in parts['더미 예시'] and '출력 요약:' in parts['더미 예시'], name + ' 입출력 예시')
         check(all(rule in text for rule in ('개인정보를 제거', '학생정보 폴더', '덮어쓰기 금지',
-                                           '결과 파일을 열어 확인하기 전', '외부 검색·게시·발송·프로그램 설치')),
+                                           '결과 파일을 열어 확인하기 전', '외부 검색·게시·발송·프로그램 설치',
+                                           '잔여 개인정보', '처리를 중단', '제거본을 요청',
+                                           '답변·검수표·다른 AI 입력에 재기재하지')),
               name + ' 공통 보호 원칙 유지')
 
     for name in ('worksheet-a4.html', 'answer-a4.html', 'slides-16x9.html',
@@ -92,6 +94,24 @@ def static_checks():
     check(all(x in texts['cross-check'] for x in ('맞음/틀림/부분', '근거 파일·위치', '반영 여부')),
           '지적 판정표의 판정·근거·반영 여부')
 
+    for name in ('question-draft', 'explanation-draft', 'worksheet-pdf'):
+        check(all(x in texts[name] for x in ('출처 표기와 이용 허락은 별개', '전재·변형·인쇄 배부·온라인 공개',
+                                             '원장에게 확인받기 전 진행하지', '이용범위-새번호.md')),
+              name + ' 출처·허락 구분 및 미확인 이용 보류')
+    check(all(x in texts['parent-message'] for x in
+              ('원장 확정 문구라도', '사용 전 원장에게 근거·적용 규정 확인을 요청', '확인일',
+               '초안에 ‘확인 필요’', '사용을 보류', '법률 판단을 대신하지', '법적 검증으로 표시하지'))
+          and '환불은 제공된 확정 문구만 씁니다' not in texts['parent-message'], '권리 제한 문구 확인·법률 판단 위임 금지')
+    agents = (TEMPLATES / 'AGENTS.md').read_text(encoding='utf-8')
+    check(all(x in agents for x in ('고객 자료는 작업실 안에서만', '설치된 ek-workroom 플러그인의 스킬·양식·스크립트',
+                                    '그 밖의 경로는 찾거나 열지', '보호 대상 폴더는 열지')), '작업실 경계·설치 플러그인 읽기 예외')
+    check(all(x in texts['cross-check'] for x in ('Codex 필요', '수정 HTML에서 새 PDF', '전 쪽을 열어 확인',
+                                                 'PDF는 미완료', '방금 만든 학생용·정답용 HTML', '실제 경로')),
+          'HTML 교차 검토 후 새 PDF·열람·실제 대상 연결')
+    check('`E-입력.txt`' in texts['worksheet-pdf'] and '탐색기로' in texts['worksheet-pdf']
+          and all('학습지-' + kind + '-001.html/.pdf' in texts['worksheet-pdf']
+                  for kind in ('학생용', '정답용')), '학습지 예시 입력 준비·실제 출력 이름')
+
 
 class TemplateParser(HTMLParser):
     def __init__(self):
@@ -121,6 +141,43 @@ class TemplateParser(HTMLParser):
             self.note_text.append(data)
 
 
+def check_template(name, text):
+    parser = TemplateParser()
+    parser.feed(text)
+    if name == 'worksheet-a4':
+        check({'sheet-header', 'metadata', 'name-field', 'question', 'question-number', 'choices'} <= parser.classes
+              and 'answer-only' not in parser.classes and '정답표' not in text,
+              '학생용 구조·정답 영역 미포함')
+    elif name == 'answer-a4':
+        check('answer-only' in parser.classes, '정답용 별도 클래스')
+    else:
+        check('speaker-notes' in parser.classes and not ''.join(parser.note_text).strip()
+              and '@page{size:1280px 720px;margin:0}' in text, '16:9 쪽 규격·비어 있는 별도 메모 섹션')
+    check(all(font in text for font in ("'Malgun Gothic'", "'Apple SD Gothic Neo'"))
+          and 'break-inside:avoid' in text, name + ' 한글 글꼴·쪽나눔 보호')
+
+
+def template_checks():
+    for name in ('worksheet-a4', 'answer-a4', 'slides-16x9'):
+        text = (TEMPLATES / (name + '.html')).read_text(encoding='utf-8')
+        check_template(name, text)
+        if name != 'slides-16x9':
+            # Validate reusable formula markup even though template content is inert in the base PDF.
+            formula = re.search(r'<template id="formula-block">(.*?)</template>', text, re.S)
+            check(formula is not None, name + ' 복사용 수식 블록 존재')
+            parser = TemplateParser()
+            parser.feed(formula[1])
+            check({'formula', 'fraction', 'numerator', 'denominator', 'radical', 'root-sign', 'root-body'}
+                  <= parser.classes and '<sub>' in formula[1] and '<sup>' in formula[1],
+                  name + ' 분수·첨자·근호 구조')
+            check(all('.' + cls + '{' in text for cls in
+                      ('formula', 'fraction', 'numerator', 'denominator', 'radical', 'root-sign', 'root-body'))
+                  and 'border-bottom:1px solid currentColor' in text
+                  and 'border-top:1px solid currentColor' in text, name + ' 외부 라이브러리 없는 수식 CSS')
+            check('한 쪽 초과 문항·해설' in text and '승인된 문단 경계' in text
+                  and '계속' in text and '그림·답안 칸도 쪽 경계' in text, name + ' 큰 블록 수동 분할 지침')
+
+
 def render_checks(run):
     # 자체 실행할 때도 실제 홈·임시 폴더를 사용하지 않는다.
     base = run / 'customer-skills'
@@ -134,6 +191,9 @@ def render_checks(run):
     edge = next((Path(os.environ[key]) / 'Microsoft/Edge/Application/msedge.exe'
                  for key in ('ProgramFiles(x86)', 'ProgramFiles', 'LOCALAPPDATA')
                  if key in os.environ and (Path(os.environ[key]) / 'Microsoft/Edge/Application/msedge.exe').is_file()), None)
+    if sys.platform.startswith('linux'):
+        print('SKIP Edge 렌더: Linux에는 Windows Edge·PowerShell이 없어 실제 PDF·수식 시각 검증은 판매자 PC에서 실행', flush=True)
+        return False
     check(edge is not None, '실제 Edge 필수(없으면 실패, 모의 렌더 없음)')
     env['EK_PDF_BROWSER'] = str(edge)
     import fitz
@@ -150,25 +210,19 @@ def render_checks(run):
     specs = [('worksheet-a4', 1, ('일차방정식 연습', '이름:', '2x + 3 = 7')),
              ('answer-a4', 1, ('정답표', '근거 위치', '오답 이유')),
              ('slides-16x9', 2, ('밀도는 같은 부피에서 비교합니다', '두 물체의 부피가 같다면?'))]
+    specs += [(name + '-math', pages, markers) for name, pages, markers in specs[:2]]
     for name, expected, markers in specs:
-        source = TEMPLATES / (name + '.html')
+        source_name = name.removesuffix('-math')
+        source = TEMPLATES / (source_name + '.html')
         text = source.read_text(encoding='utf-8')
-        parser = TemplateParser()
-        parser.feed(text)
-        if name == 'worksheet-a4':
-            check({'sheet-header', 'metadata', 'name-field', 'question', 'question-number', 'choices'} <= parser.classes
-                  and 'answer-only' not in parser.classes and '정답표' not in text,
-                  '학생용 구조·정답 영역 미포함')
-        elif name == 'answer-a4':
-            check('answer-only' in parser.classes, '정답용 별도 클래스')
-        else:
-            check('speaker-notes' in parser.classes and not ''.join(parser.note_text).strip()
-                  and '@page{size:1280px 720px;margin:0}' in text, '16:9 쪽 규격·비어 있는 별도 메모 섹션')
-        check(all(font in text for font in ("'Malgun Gothic'", "'Apple SD Gothic Neo'"))
-              and 'break-inside:avoid' in text, name + ' 한글 글꼴·쪽나눔 보호')
         html, pdf, audit = [output / (name + ext) for ext in ('.html', '.pdf', '.jsonl')]
-        # 재작성한 테스트 HTML 대신 배포되는 양식의 바이트를 그대로 렌더한다.
-        html.write_bytes(source.read_bytes())
+        if name.endswith('-math'):
+            # 별도 수식 표본은 배포 양식의 기존 블록만 활성화한다. 기본 3종은 원본 바이트 그대로 렌더한다.
+            text = text.replace('<template id="formula-block">', '<div>').replace('</template>', '</div>')
+            html.write_text(text, encoding='utf-8')
+            markers = markers + ('a + b', '√')
+        else:
+            html.write_bytes(source.read_bytes())
         result = subprocess.run([ps, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
                                  str(PLUGIN / 'scripts/ek-pdf.ps1'), '-Html', str(html), '-Pdf', str(pdf)],
                                 env=dict(env, EK_PDF_AUDIT_LOG=str(audit)), capture_output=True, timeout=140)
@@ -194,11 +248,13 @@ def render_checks(run):
     check(hashlib.sha256(metadata.read_bytes()).hexdigest() == before, '렌더 후 보호 목록 변경 0')
     check(not list((base / 'temp').glob('ek-pdf-*')), '렌더 임시 프로필·서버 상태 정리')
     print('고객 스킬 검증 산출물: ' + str(output), flush=True)
+    return True
 
 
 if __name__ == '__main__':
     run = Path(sys.argv[1]).resolve()
     check(run.is_relative_to(ROOT / '.tmp'), '테스트 쓰기는 저장소 .tmp 내부만')
     static_checks()
-    render_checks(run)
-    print('CUSTOMER SKILLS ALL PASSED', flush=True)
+    template_checks()
+    rendered = render_checks(run)
+    print('CUSTOMER SKILLS ALL PASSED' if rendered else 'CUSTOMER SKILLS LINUX PASSED (Edge SKIP)', flush=True)
